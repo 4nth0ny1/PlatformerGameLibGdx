@@ -4,10 +4,24 @@ import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.Animation;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 
 public class PlatformerGame extends ApplicationAdapter {
+
+    private SpriteBatch batch;
+    private Texture playerSheetTexture;
+    private float spriteFootOffset = 42f; // pixels inside the 48x48 frame (tweak)
+
+    private Animation<TextureRegion> walkRightAnimation;
+    private Animation<TextureRegion> walkLeftAnimation;
+
+    private float stateTimeSeconds;
+
 
     private ShapeRenderer shapeRenderer;
     private OrthographicCamera camera;
@@ -39,6 +53,16 @@ public class PlatformerGame extends ApplicationAdapter {
     private float velocityY = 0f;
     private float jumpVelocity = 300f;
 
+    private boolean facingRight = true;
+    private boolean isMoving = false;
+
+    private static final int FRAME_WIDTH = 48;
+    private static final int FRAME_HEIGHT = 48;
+    private static final int WALK_ROW = 1;
+    private static final int WALK_FRAMES = 6;
+    private float drawWidth;
+    private float drawHeight;
+
     // Double jump
     private int maxJumps = 2;
     private int jumpsUsed = 0;
@@ -50,6 +74,44 @@ public class PlatformerGame extends ApplicationAdapter {
 
     @Override
     public void create() {
+        batch = new SpriteBatch();
+
+        playerSheetTexture = new Texture("player.png");
+
+        TextureRegion[][] grid = TextureRegion.split(playerSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
+
+        // Build WALK RIGHT frames from the chosen row
+        TextureRegion[] walkRightFrames = new TextureRegion[WALK_FRAMES];
+        for (int col = 0; col < WALK_FRAMES; col++) {
+            walkRightFrames[col] = grid[WALK_ROW][col];
+        }
+
+        // Build WALK LEFT frames by flipping copies of the right frames
+        TextureRegion[] walkLeftFrames = new TextureRegion[WALK_FRAMES];
+        for (int i = 0; i < WALK_FRAMES; i++) {
+            TextureRegion copy = new TextureRegion(walkRightFrames[i]);
+            copy.flip(true, false);
+            walkLeftFrames[i] = copy;
+        }
+
+
+        playerWidth = 16f;
+        playerHeight = 20f;
+        drawWidth = 72f;
+        drawHeight = 72f;
+
+        float frameDurationSeconds = 0.10f; // tweak for faster/slower walk
+        walkRightAnimation = new Animation<TextureRegion>(frameDurationSeconds, walkRightFrames);
+        walkLeftAnimation = new Animation<TextureRegion>(frameDurationSeconds, walkLeftFrames);
+
+        walkRightAnimation.setPlayMode(Animation.PlayMode.LOOP);
+        walkLeftAnimation.setPlayMode(Animation.PlayMode.LOOP);
+
+        playerX = 100f;
+        playerY = 100f;
+
+        stateTimeSeconds = 0f;
+
         shapeRenderer = new ShapeRenderer();
 
         // Start with level 1
@@ -69,7 +131,10 @@ public class PlatformerGame extends ApplicationAdapter {
 
     @Override
     public void render() {
+        isOnGround = false;
+
         float deltaTime = Gdx.graphics.getDeltaTime();
+        stateTimeSeconds += deltaTime;
 
         updatePlayer(deltaTime);
         updateCamera();
@@ -82,13 +147,57 @@ public class PlatformerGame extends ApplicationAdapter {
         Gdx.gl.glClearColor(red, green, blue, alpha);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+
         camera.update();
         shapeRenderer.setProjectionMatrix(camera.combined);
 
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawTiles();
-        drawPlayer();
         shapeRenderer.end();
+
+        batch.setProjectionMatrix(camera.combined);
+
+        batch.begin();
+        TextureRegion currentFrame = getCurrentPlayerFrame();
+
+        float drawX = playerX - (drawWidth - playerWidth) / 2f;     // center sprite on the box
+        float drawY = playerY - (drawHeight - playerHeight) + spriteFootOffset;        // drop sprite so feet touch ground
+        batch.draw(currentFrame, drawX, drawY, drawWidth, drawHeight);
+        batch.end();
+    }
+
+    private void updateMovement(float deltaSeconds) {
+        isMoving = false;
+
+        if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+            playerX -= moveSpeed * deltaSeconds;
+            facingRight = false;
+            isMoving = true;
+        }
+
+        if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+            playerX += moveSpeed * deltaSeconds;
+            facingRight = true;
+            isMoving = true;
+        }
+    }
+
+    private TextureRegion getCurrentPlayerFrame() {
+        if (!isMoving) {
+            // For now: just show first walk frame as "idle"
+            // Later we can plug in real idle frames from the sheet.
+            if (facingRight) {
+                return walkRightAnimation.getKeyFrames()[0];
+            } else {
+                return walkLeftAnimation.getKeyFrames()[0];
+            }
+        }
+
+        if (facingRight) {
+            return walkRightAnimation.getKeyFrame(stateTimeSeconds, true);
+        } else {
+            return walkLeftAnimation.getKeyFrame(stateTimeSeconds, true);
+        }
     }
 
     // ----------------------- LEVEL BUILDING -----------------------
@@ -136,15 +245,32 @@ public class PlatformerGame extends ApplicationAdapter {
         // Horizontal movement
         float deltaX = 0f;
 
+        isMoving = false;
+
+
+
+
         boolean leftPressed = Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT);
         boolean rightPressed = Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT);
 
-        if (leftPressed) {
+        if (leftPressed && !rightPressed) {
+            facingRight = false;
+            isMoving = true;
             deltaX = deltaX - moveSpeed * deltaTime;
         }
-        if (rightPressed) {
+
+        if (rightPressed && !leftPressed) {
+            facingRight = true;
+            isMoving = true;
             deltaX = deltaX + moveSpeed * deltaTime;
         }
+
+//        if (leftPressed) {
+//            deltaX = deltaX - moveSpeed * deltaTime;
+//        }
+//        if (rightPressed) {
+//            deltaX = deltaX + moveSpeed * deltaTime;
+//        }
 
         if (deltaX != 0f) {
             moveHorizontal(deltaX);
@@ -413,20 +539,22 @@ public class PlatformerGame extends ApplicationAdapter {
                 boolean overlapY = playerTop > tileBottom && playerBottom < tileTop;
 
                 if (overlapX && overlapY) {
+
+                    // Hitting head
                     if (deltaY > 0f) {
-                        // moving up, hit head
                         playerY = tileBottom - playerHeight;
                         velocityY = 0f;
-                    } else if (deltaY < 0f) {
-                        // moving down, landed
+                        return;
+                    }
+
+                    // Landing (ONLY when falling)
+                    if (deltaY < 0f) {
                         playerY = tileTop;
                         velocityY = 0f;
                         isOnGround = true;
                         jumpsUsed = 0;
+                        return;
                     }
-
-                    playerBottom = playerY;
-                    playerTop = playerY + playerHeight;
                 }
 
                 tileX = tileX + 1;
@@ -511,5 +639,7 @@ public class PlatformerGame extends ApplicationAdapter {
     @Override
     public void dispose() {
         shapeRenderer.dispose();
+        playerSheetTexture.dispose();
+
     }
 }
