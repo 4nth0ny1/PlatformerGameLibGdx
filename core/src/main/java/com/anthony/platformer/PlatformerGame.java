@@ -15,6 +15,9 @@ public class PlatformerGame extends ApplicationAdapter {
 
     private SpriteBatch batch;
     private Texture playerSheetTexture;
+    private Texture plainsSheetTexture;
+    private Texture grassTexture;
+    private Texture dirtTexture;
     private float spriteFootOffset = 42f; // pixels inside the 48x48 frame (tweak)
 
     private Animation<TextureRegion> walkRightAnimation;
@@ -68,7 +71,15 @@ public class PlatformerGame extends ApplicationAdapter {
     private int jumpsUsed = 0;
     private boolean isOnGround = false;
 
+    // ---------------- PLAINS TILE REGIONS ----------------
 
+    private TextureRegion[][] plainsGrid;
+
+    // Pick a chunk from plains.png to use for "ground"
+    // plains.png in your screenshot is 96x192, so at 48x48 it becomes 4 rows x 2 cols.
+    private TextureRegion groundRegion;
+    private TextureRegion redDoorRegion;
+    private TextureRegion aquaDoorRegion;
 
 
 
@@ -77,8 +88,17 @@ public class PlatformerGame extends ApplicationAdapter {
         batch = new SpriteBatch();
 
         playerSheetTexture = new Texture("player.png");
+        plainsSheetTexture = new Texture("plains.png");
+        grassTexture = new Texture("grass_tile.png");
+        dirtTexture = new Texture("dirt.png");
 
         TextureRegion[][] grid = TextureRegion.split(playerSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
+
+        // Player sheet split
+        TextureRegion[][] playerGrid = TextureRegion.split(playerSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
+
+        // Plains sheet split (48x48 chunks)
+        plainsGrid = TextureRegion.split(plainsSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
 
         // Build WALK RIGHT frames from the chosen row
         TextureRegion[] walkRightFrames = new TextureRegion[WALK_FRAMES];
@@ -94,6 +114,12 @@ public class PlatformerGame extends ApplicationAdapter {
             walkLeftFrames[i] = copy;
         }
 
+        // ---------------- PLAINS REGIONS ----------------
+        // Change these indices to whatever chunk you actually want:
+        // rows: 0..3 (top to bottom), cols: 0..1 (left to right)
+        groundRegion = plainsGrid[2][0];    // example: bottom-left chunk
+        redDoorRegion = plainsGrid[2][1];   // example: some other chunk
+        aquaDoorRegion = plainsGrid[1][1];  // example: some other chunk
 
         playerWidth = 16f;
         playerHeight = 20f;
@@ -149,21 +175,48 @@ public class PlatformerGame extends ApplicationAdapter {
 
 
         camera.update();
-        shapeRenderer.setProjectionMatrix(camera.combined);
+//        shapeRenderer.setProjectionMatrix(camera.combined);
+//
+//        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+//        drawTiles();
+//        shapeRenderer.end();
+//
+//        batch.setProjectionMatrix(camera.combined);
+//
+//        batch.begin();
+//        TextureRegion currentFrame = getCurrentPlayerFrame();
+//
+//        float drawX = playerX - (drawWidth - playerWidth) / 2f;     // center sprite on the box
+//        float drawY = playerY - (drawHeight - playerHeight) + spriteFootOffset;        // drop sprite so feet touch ground
+//        batch.draw(currentFrame, drawX, drawY, drawWidth, drawHeight);
+//        batch.end();
 
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        drawTiles();
-        shapeRenderer.end();
-
+        // --- DRAW WORLD (TEXTURES) ---
         batch.setProjectionMatrix(camera.combined);
-
         batch.begin();
+        drawTilesWithTextures();
+        drawPlayerWithBatch();
+        batch.end();
+
+        /* ---------- SHAPES (DOORS) ---------- */
+        shapeRenderer.setProjectionMatrix(camera.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        drawDoorShapes();
+        shapeRenderer.end();
+    }
+
+
+    private void drawPlayerWithBatch() {
         TextureRegion currentFrame = getCurrentPlayerFrame();
 
-        float drawX = playerX - (drawWidth - playerWidth) / 2f;     // center sprite on the box
-        float drawY = playerY - (drawHeight - playerHeight) + spriteFootOffset;        // drop sprite so feet touch ground
+        float drawX = playerX - (drawWidth - playerWidth) / 2f;
+        float drawY = playerY - (drawHeight - playerHeight) + spriteFootOffset;
+
         batch.draw(currentFrame, drawX, drawY, drawWidth, drawHeight);
-        batch.end();
+    }
+
+    private void drawPlayerDebugBox() {
+        shapeRenderer.rect(playerX, playerY, playerWidth, playerHeight);
     }
 
     private void updateMovement(float deltaSeconds) {
@@ -264,13 +317,6 @@ public class PlatformerGame extends ApplicationAdapter {
             isMoving = true;
             deltaX = deltaX + moveSpeed * deltaTime;
         }
-
-//        if (leftPressed) {
-//            deltaX = deltaX - moveSpeed * deltaTime;
-//        }
-//        if (rightPressed) {
-//            deltaX = deltaX + moveSpeed * deltaTime;
-//        }
 
         if (deltaX != 0f) {
             moveHorizontal(deltaX);
@@ -630,16 +676,90 @@ public class PlatformerGame extends ApplicationAdapter {
         }
     }
 
+    private void drawDoorShapes() {
+        int rows = currentLevel.getRows();
+        int cols = currentLevel.getCols();
+        int tileSize = currentLevel.getTileSize();
 
-    private void drawPlayer() {
-        shapeRenderer.setColor(1f, 1f, 1f, 1f);
-        shapeRenderer.rect(playerX, playerY, playerWidth, playerHeight);
+        int row = 0;
+        while (row < rows) {
+            int col = 0;
+            while (col < cols) {
+                int tile = currentLevel.getTile(row, col);
+
+                float x = col * tileSize;
+                float y = row * tileSize;
+
+                if (tile == 2) {
+                    // Red door
+                    shapeRenderer.setColor(1f, 0f, 0f, 1f);
+                    shapeRenderer.rect(x, y, tileSize, tileSize);
+                }
+
+                if (tile == 3) {
+                    // Aqua door
+                    shapeRenderer.setColor(0f, 0.6f, 0.6f, 1f);
+                    shapeRenderer.rect(x, y, tileSize, tileSize);
+                }
+
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+    }
+
+
+    private void drawTilesWithTextures() {
+        int rows = currentLevel.getRows();
+        int cols = currentLevel.getCols();
+        int tileSize = currentLevel.getTileSize(); // 16
+
+        int row = 0;
+        while (row < rows) {
+            int col = 0;
+            while (col < cols) {
+                int tile = currentLevel.getTile(row, col);
+
+                float x = col * tileSize;
+                float y = row * tileSize;
+
+                if (tile == 1) {
+                    // Solid tile
+                    // batch.draw(groundRegion, x, y, tileSize, tileSize);
+                    batch.draw(grassTexture, x, y, tileSize, tileSize);
+                } else if (tile == 4) {
+                    batch.draw(dirtTexture, x, y, tileSize, tileSize);
+                }
+//                else if (tile == 2) {
+//                    // Red door tile
+////                    batch.draw(redDoorRegion, x, y, tileSize, tileSize);
+//
+
+//                } else if (tile == 3) {
+//                    // Aqua door tile
+////                    batch.draw(aquaDoorRegion, x, y, tileSize, tileSize);
+
+//                }
+
+                col = col + 1;
+            }
+            row = row + 1;
+        }
     }
 
     @Override
     public void dispose() {
-        shapeRenderer.dispose();
-        playerSheetTexture.dispose();
-
+        if (shapeRenderer != null) {
+            shapeRenderer.dispose();
+        }
+        if (batch != null) {
+            batch.dispose();
+        }
+        if (playerSheetTexture != null) {
+            playerSheetTexture.dispose();
+        }
+        if (plainsSheetTexture != null) {
+            plainsSheetTexture.dispose();
+        }
     }
 }

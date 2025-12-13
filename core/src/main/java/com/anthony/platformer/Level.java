@@ -44,7 +44,9 @@ public class Level {
                 char c = line.charAt(colIndex);
 
                 if (c == '#') {
-                    tiles[rowIndex][colIndex] = 1; // solid
+                    tiles[rowIndex][colIndex] = 1; // grass
+                } else if (c == 'd') {
+                    tiles[rowIndex][colIndex] = 4; // dirt
                 } else if (c == '?') {
                     tiles[rowIndex][colIndex] = 2; // red door
                 } else if (c == '>') {
