@@ -18,6 +18,13 @@ public class PlatformerGame extends ApplicationAdapter {
     private Texture plainsSheetTexture;
     private Texture grassTexture;
     private Texture dirtTexture;
+    private Texture rightTopGrassTexture;
+    private Texture leftTopGrassTexture;
+    private Texture leftDirtTexture;
+    private Texture rightDirtTexture;
+    private Texture bottomDirtTexture;
+    private Texture leftBottomDirtTexture;
+    private Texture rightBottomDirtTexture;
     private float spriteFootOffset = 42f; // pixels inside the 48x48 frame (tweak)
 
     private Animation<TextureRegion> walkRightAnimation;
@@ -89,8 +96,15 @@ public class PlatformerGame extends ApplicationAdapter {
 
         playerSheetTexture = new Texture("player.png");
         plainsSheetTexture = new Texture("plains.png");
-        grassTexture = new Texture("grass_tile.png");
+        grassTexture = new Texture("top-grass.png");
         dirtTexture = new Texture("dirt.png");
+        rightTopGrassTexture = new Texture("right-top-grass.png");
+        leftTopGrassTexture = new Texture("left-top-grass.png");
+        leftDirtTexture = new Texture("left-dirt.png");
+        rightDirtTexture = new Texture("right-dirt.png");
+        bottomDirtTexture = new Texture("bottom-dirt.png");
+        rightBottomDirtTexture = new Texture("right-bottom-dirt.png");
+        leftBottomDirtTexture = new Texture("left-bottom-dirt.png");
 
         TextureRegion[][] grid = TextureRegion.split(playerSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
 
@@ -729,6 +743,20 @@ public class PlatformerGame extends ApplicationAdapter {
                     batch.draw(grassTexture, x, y, tileSize, tileSize);
                 } else if (tile == 4) {
                     batch.draw(dirtTexture, x, y, tileSize, tileSize);
+                } else if (tile == 5) {
+                    batch.draw(rightTopGrassTexture, x, y, tileSize, tileSize);
+                } else if (tile == 6) {
+                    batch.draw(leftTopGrassTexture, x, y, tileSize, tileSize);
+                } else if (tile == 7) {
+                    batch.draw(leftDirtTexture, x, y, tileSize, tileSize);
+                } else if (tile == 8) {
+                    batch.draw(rightDirtTexture, x, y, tileSize, tileSize);
+                } else if (tile == 9) {
+                    batch.draw(bottomDirtTexture, x, y, tileSize, tileSize);
+                } else if (tile == 10) {
+                    batch.draw(rightBottomDirtTexture, x, y, tileSize, tileSize);
+                } else if (tile == 11) {
+                    batch.draw(leftBottomDirtTexture, x, y, tileSize, tileSize);
                 }
 //                else if (tile == 2) {
 //                    // Red door tile

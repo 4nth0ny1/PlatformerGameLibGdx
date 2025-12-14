@@ -47,6 +47,20 @@ public class Level {
                     tiles[rowIndex][colIndex] = 1; // grass
                 } else if (c == 'd') {
                     tiles[rowIndex][colIndex] = 4; // dirt
+                } else if (c == 'r') {
+                    tiles[rowIndex][colIndex] = 5; // right top grass
+                } else if (c == 'l') {
+                    tiles[rowIndex][colIndex] = 6; // left top grass
+                } else if (c == 's') {
+                    tiles[rowIndex][colIndex] = 7; // left dirt
+                } else if (c == 'f') {
+                    tiles[rowIndex][colIndex] = 8; // right dirt
+                } else if (c == 'b') {
+                    tiles[rowIndex][colIndex] = 9; // bottom dirt
+                } else if (c == 'q') {
+                    tiles[rowIndex][colIndex] = 10; // right bottom dirt
+                } else if (c == 'w') {
+                    tiles[rowIndex][colIndex] = 11; // left bottom dirt
                 } else if (c == '?') {
                     tiles[rowIndex][colIndex] = 2; // red door
                 } else if (c == '>') {
@@ -103,7 +117,10 @@ public class Level {
 
     public boolean isSolidTile(int col, int row) {
         int value = getTile(row, col);
-        return value == 1;
+        if (value == 1 || value == 5 || value == 6 || value == 7) {
+            return true;
+        }
+        return false;
     }
 
     public boolean isDoorTile(int col, int row) {
