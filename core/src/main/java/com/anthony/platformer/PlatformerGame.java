@@ -25,10 +25,17 @@ public class PlatformerGame extends ApplicationAdapter {
     private Texture bottomDirtTexture;
     private Texture leftBottomDirtTexture;
     private Texture rightBottomDirtTexture;
+    private Texture roundedGrassTexture;
+    private Texture roundedGrassFlipTexture;
     private float spriteFootOffset = 42f; // pixels inside the 48x48 frame (tweak)
 
     private Animation<TextureRegion> walkRightAnimation;
     private Animation<TextureRegion> walkLeftAnimation;
+    private Animation<TextureRegion> attackRightAnimation;
+    private Animation<TextureRegion> attackLeftAnimation;
+
+    private float attackTimeSeconds = 0f;
+    private float attackDurationSeconds = 0f;
 
     private float stateTimeSeconds;
 
@@ -65,11 +72,14 @@ public class PlatformerGame extends ApplicationAdapter {
 
     private boolean facingRight = true;
     private boolean isMoving = false;
+    private boolean isAttacking = false;
 
     private static final int FRAME_WIDTH = 48;
     private static final int FRAME_HEIGHT = 48;
     private static final int WALK_ROW = 1;
     private static final int WALK_FRAMES = 6;
+    private static final int ATTACK_ROW = 7;
+    private static final int ATTACK_FRAMES = 4;
     private float drawWidth;
     private float drawHeight;
 
@@ -105,6 +115,8 @@ public class PlatformerGame extends ApplicationAdapter {
         bottomDirtTexture = new Texture("bottom-dirt.png");
         rightBottomDirtTexture = new Texture("right-bottom-dirt.png");
         leftBottomDirtTexture = new Texture("left-bottom-dirt.png");
+        roundedGrassTexture = new Texture("grass-rounded-up.png");
+        roundedGrassFlipTexture = new Texture("grass-rounded-up-flip.png");
 
         TextureRegion[][] grid = TextureRegion.split(playerSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
 
@@ -127,6 +139,34 @@ public class PlatformerGame extends ApplicationAdapter {
             copy.flip(true, false);
             walkLeftFrames[i] = copy;
         }
+
+        // Build Attack Right animation
+        TextureRegion[] attackRightFrames = new TextureRegion[ATTACK_FRAMES];
+        for (int j = 0; j < ATTACK_FRAMES; j++) {
+            attackRightFrames[j] = grid[ATTACK_ROW][j];
+        }
+
+        float attackFrameDurationSeconds = 0.08f; // tweak
+
+        attackRightAnimation = new Animation<TextureRegion>(attackFrameDurationSeconds, attackRightFrames);
+        attackRightAnimation.setPlayMode(Animation.PlayMode.NORMAL);
+
+        // Build Attack Left frames by flipping copies
+        TextureRegion[] attackLeftFrames = new TextureRegion[ATTACK_FRAMES];
+        for (int i = 0; i < ATTACK_FRAMES; i++) {
+            TextureRegion copy = new TextureRegion(attackRightFrames[i]);
+            copy.flip(true, false);
+            attackLeftFrames[i] = copy;
+        }
+
+        attackLeftAnimation = new Animation<TextureRegion>(attackFrameDurationSeconds, attackLeftFrames);
+        attackLeftAnimation.setPlayMode(Animation.PlayMode.NORMAL);
+
+        // Total time of the attack animation (so we know when to stop attacking)
+        attackDurationSeconds = ATTACK_FRAMES * attackFrameDurationSeconds;
+
+
+
 
         // ---------------- PLAINS REGIONS ----------------
         // Change these indices to whatever chunk you actually want:
@@ -235,6 +275,7 @@ public class PlatformerGame extends ApplicationAdapter {
 
     private void updateMovement(float deltaSeconds) {
         isMoving = false;
+        isAttacking = false;
 
         if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
             playerX -= moveSpeed * deltaSeconds;
@@ -247,25 +288,37 @@ public class PlatformerGame extends ApplicationAdapter {
             facingRight = true;
             isMoving = true;
         }
+
     }
 
     private TextureRegion getCurrentPlayerFrame() {
-        if (!isMoving) {
-            // For now: just show first walk frame as "idle"
-            // Later we can plug in real idle frames from the sheet.
+
+        // 1) Attack has highest priority
+        if (isAttacking) {
             if (facingRight) {
-                return walkRightAnimation.getKeyFrames()[0];
+                return attackRightAnimation.getKeyFrame(attackTimeSeconds, false);
             } else {
-                return walkLeftAnimation.getKeyFrames()[0];
+                return attackLeftAnimation.getKeyFrame(attackTimeSeconds, false);
             }
         }
 
+        // 2) Movement animations
+        if (isMoving) {
+            if (facingRight) {
+                return walkRightAnimation.getKeyFrame(stateTimeSeconds, true);
+            } else {
+                return walkLeftAnimation.getKeyFrame(stateTimeSeconds, true);
+            }
+        }
+
+        // 3) Idle (just use first walk frame for now)
         if (facingRight) {
-            return walkRightAnimation.getKeyFrame(stateTimeSeconds, true);
+            return walkRightAnimation.getKeyFrames()[0];
         } else {
-            return walkLeftAnimation.getKeyFrame(stateTimeSeconds, true);
+            return walkLeftAnimation.getKeyFrames()[0];
         }
     }
+
 
     // ----------------------- LEVEL BUILDING -----------------------
 
@@ -338,6 +391,7 @@ public class PlatformerGame extends ApplicationAdapter {
 
         // Jump / double jump
         handleJumpInput();
+        handleAttackInput(deltaTime);
 
         // Gravity
         velocityY = velocityY + gravity * deltaTime;
@@ -504,6 +558,27 @@ public class PlatformerGame extends ApplicationAdapter {
             }
         }
     }
+
+    private void handleAttackInput(float deltaTime) {
+        // Start attack on a click (only once per click)
+        boolean attackPressedThisFrame = Gdx.input.isButtonJustPressed(Input.Buttons.LEFT);
+
+        if (attackPressedThisFrame) {
+            isAttacking = true;
+            attackTimeSeconds = 0f; // restart animation
+        }
+
+        // If attacking, advance the attack timer and stop when done
+        if (isAttacking) {
+            attackTimeSeconds = attackTimeSeconds + deltaTime;
+
+            if (attackTimeSeconds >= attackDurationSeconds) {
+                isAttacking = false;
+                attackTimeSeconds = 0f;
+            }
+        }
+    }
+
 
     private void moveHorizontal(float deltaX) {
         float newX = playerX + deltaX;
@@ -757,6 +832,10 @@ public class PlatformerGame extends ApplicationAdapter {
                     batch.draw(rightBottomDirtTexture, x, y, tileSize, tileSize);
                 } else if (tile == 11) {
                     batch.draw(leftBottomDirtTexture, x, y, tileSize, tileSize);
+                } else if (tile == 12) {
+                    batch.draw(roundedGrassTexture, x, y, tileSize, tileSize);
+                } else if (tile == 13) {
+                    batch.draw(roundedGrassFlipTexture, x, y, tileSize, tileSize);
                 }
 //                else if (tile == 2) {
 //                    // Red door tile

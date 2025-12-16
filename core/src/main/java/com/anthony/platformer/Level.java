@@ -61,6 +61,10 @@ public class Level {
                     tiles[rowIndex][colIndex] = 10; // right bottom dirt
                 } else if (c == 'w') {
                     tiles[rowIndex][colIndex] = 11; // left bottom dirt
+                } else if (c == 'y') {
+                    tiles[rowIndex][colIndex] = 12; // rounded grass section
+                } else if (c == 't') {
+                    tiles[rowIndex][colIndex] = 13; // rounded grass section flip
                 } else if (c == '?') {
                     tiles[rowIndex][colIndex] = 2; // red door
                 } else if (c == '>') {
