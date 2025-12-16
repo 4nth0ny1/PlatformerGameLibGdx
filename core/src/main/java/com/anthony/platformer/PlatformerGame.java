@@ -11,10 +11,41 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class PlatformerGame extends ApplicationAdapter {
 
+    private static class Enemy {
+        public float x;
+        public float y;
+
+        public float width;
+        public float height;
+
+        public boolean facingRight;
+        public boolean isMoving;
+
+        public float stateTimeSeconds;
+
+        public Enemy(float x, float y, float width, float height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+
+            this.facingRight = true;
+            this.isMoving = true;
+
+            this.stateTimeSeconds = 0f;
+        }
+    }
+
     private SpriteBatch batch;
+
     private Texture playerSheetTexture;
+    private Texture skeletonSheetTexture;
+
     private Texture plainsSheetTexture;
     private Texture grassTexture;
     private Texture dirtTexture;
@@ -27,6 +58,7 @@ public class PlatformerGame extends ApplicationAdapter {
     private Texture rightBottomDirtTexture;
     private Texture roundedGrassTexture;
     private Texture roundedGrassFlipTexture;
+
     private float spriteFootOffset = 42f; // pixels inside the 48x48 frame (tweak)
 
     private Animation<TextureRegion> walkRightAnimation;
@@ -34,11 +66,13 @@ public class PlatformerGame extends ApplicationAdapter {
     private Animation<TextureRegion> attackRightAnimation;
     private Animation<TextureRegion> attackLeftAnimation;
 
+    private Animation<TextureRegion> enemyWalkRightAnimation;
+    private Animation<TextureRegion> enemyWalkLeftAnimation;
+
     private float attackTimeSeconds = 0f;
     private float attackDurationSeconds = 0f;
 
     private float stateTimeSeconds;
-
 
     private ShapeRenderer shapeRenderer;
     private OrthographicCamera camera;
@@ -46,6 +80,10 @@ public class PlatformerGame extends ApplicationAdapter {
     // ---------------- TILE & WORLD SETTINGS ----------------
 
     private static final int TILE_SIZE = 16;
+
+    // Put this value in your Levels.LEVEL_X arrays wherever you want an enemy to spawn.
+    // Example: tile value 20 means "spawn enemy here"
+    private static final int TILE_ENEMY_SPAWN = 20;
 
     private Level currentLevel;
 
@@ -56,11 +94,13 @@ public class PlatformerGame extends ApplicationAdapter {
     private boolean wasTouchingDoorLastFrame = false;
     private boolean wasTouchingAquaDoorLastFrame = false;
 
-
     // ---------------- PLAYER SETTINGS ----------------
 
     private float playerWidth = 16f;
     private float playerHeight = 16f;
+
+    private float enemyWidth = 16f;
+    private float enemyHeight = 16f;
 
     private float playerX;
     private float playerY;
@@ -78,8 +118,13 @@ public class PlatformerGame extends ApplicationAdapter {
     private static final int FRAME_HEIGHT = 48;
     private static final int WALK_ROW = 1;
     private static final int WALK_FRAMES = 6;
+
+    private static final int ENEMY_WALK_ROW = 1;
+    private static final int ENEMY_FRAMES = 6;
+
     private static final int ATTACK_ROW = 7;
     private static final int ATTACK_FRAMES = 4;
+
     private float drawWidth;
     private float drawHeight;
 
@@ -92,19 +137,21 @@ public class PlatformerGame extends ApplicationAdapter {
 
     private TextureRegion[][] plainsGrid;
 
-    // Pick a chunk from plains.png to use for "ground"
-    // plains.png in your screenshot is 96x192, so at 48x48 it becomes 4 rows x 2 cols.
     private TextureRegion groundRegion;
     private TextureRegion redDoorRegion;
     private TextureRegion aquaDoorRegion;
 
+    // ---------------- ENEMIES ----------------
 
+    private List<Enemy> enemies = new ArrayList<Enemy>();
 
     @Override
     public void create() {
         batch = new SpriteBatch();
 
         playerSheetTexture = new Texture("player.png");
+        skeletonSheetTexture = new Texture("skeleton.png");
+
         plainsSheetTexture = new Texture("plains.png");
         grassTexture = new Texture("top-grass.png");
         dirtTexture = new Texture("dirt.png");
@@ -118,10 +165,8 @@ public class PlatformerGame extends ApplicationAdapter {
         roundedGrassTexture = new Texture("grass-rounded-up.png");
         roundedGrassFlipTexture = new Texture("grass-rounded-up-flip.png");
 
-        TextureRegion[][] grid = TextureRegion.split(playerSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
-
-        // Player sheet split
         TextureRegion[][] playerGrid = TextureRegion.split(playerSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
+        TextureRegion[][] skeletonGrid = TextureRegion.split(skeletonSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
 
         // Plains sheet split (48x48 chunks)
         plainsGrid = TextureRegion.split(plainsSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
@@ -129,7 +174,13 @@ public class PlatformerGame extends ApplicationAdapter {
         // Build WALK RIGHT frames from the chosen row
         TextureRegion[] walkRightFrames = new TextureRegion[WALK_FRAMES];
         for (int col = 0; col < WALK_FRAMES; col++) {
-            walkRightFrames[col] = grid[WALK_ROW][col];
+            walkRightFrames[col] = playerGrid[WALK_ROW][col];
+        }
+
+        // Enemy walk right frames
+        TextureRegion[] enemyWalkRightFrames = new TextureRegion[ENEMY_FRAMES];
+        for (int k = 0; k < ENEMY_FRAMES; k++) {
+            enemyWalkRightFrames[k] = skeletonGrid[ENEMY_WALK_ROW][k];
         }
 
         // Build WALK LEFT frames by flipping copies of the right frames
@@ -140,18 +191,25 @@ public class PlatformerGame extends ApplicationAdapter {
             walkLeftFrames[i] = copy;
         }
 
+        // Enemy walk left frames
+        TextureRegion[] enemyWalkLeftFrames = new TextureRegion[ENEMY_FRAMES];
+        for (int i = 0; i < ENEMY_FRAMES; i++) {
+            TextureRegion copy = new TextureRegion(enemyWalkRightFrames[i]);
+            copy.flip(true, false);
+            enemyWalkLeftFrames[i] = copy;
+        }
+
         // Build Attack Right animation
         TextureRegion[] attackRightFrames = new TextureRegion[ATTACK_FRAMES];
         for (int j = 0; j < ATTACK_FRAMES; j++) {
-            attackRightFrames[j] = grid[ATTACK_ROW][j];
+            attackRightFrames[j] = playerGrid[ATTACK_ROW][j];
         }
 
-        float attackFrameDurationSeconds = 0.08f; // tweak
-
+        float attackFrameDurationSeconds = 0.08f;
         attackRightAnimation = new Animation<TextureRegion>(attackFrameDurationSeconds, attackRightFrames);
         attackRightAnimation.setPlayMode(Animation.PlayMode.NORMAL);
 
-        // Build Attack Left frames by flipping copies
+        // Attack left frames
         TextureRegion[] attackLeftFrames = new TextureRegion[ATTACK_FRAMES];
         for (int i = 0; i < ATTACK_FRAMES; i++) {
             TextureRegion copy = new TextureRegion(attackRightFrames[i]);
@@ -165,30 +223,29 @@ public class PlatformerGame extends ApplicationAdapter {
         // Total time of the attack animation (so we know when to stop attacking)
         attackDurationSeconds = ATTACK_FRAMES * attackFrameDurationSeconds;
 
+        // Plains regions (optional)
+        groundRegion = plainsGrid[2][0];
+        redDoorRegion = plainsGrid[2][1];
+        aquaDoorRegion = plainsGrid[1][1];
 
-
-
-        // ---------------- PLAINS REGIONS ----------------
-        // Change these indices to whatever chunk you actually want:
-        // rows: 0..3 (top to bottom), cols: 0..1 (left to right)
-        groundRegion = plainsGrid[2][0];    // example: bottom-left chunk
-        redDoorRegion = plainsGrid[2][1];   // example: some other chunk
-        aquaDoorRegion = plainsGrid[1][1];  // example: some other chunk
-
+        // Player draw settings
         playerWidth = 16f;
         playerHeight = 20f;
         drawWidth = 72f;
         drawHeight = 72f;
 
-        float frameDurationSeconds = 0.10f; // tweak for faster/slower walk
+        float frameDurationSeconds = 0.10f;
         walkRightAnimation = new Animation<TextureRegion>(frameDurationSeconds, walkRightFrames);
         walkLeftAnimation = new Animation<TextureRegion>(frameDurationSeconds, walkLeftFrames);
+
+        enemyWalkRightAnimation = new Animation<TextureRegion>(frameDurationSeconds, enemyWalkRightFrames);
+        enemyWalkLeftAnimation = new Animation<TextureRegion>(frameDurationSeconds, enemyWalkLeftFrames);
 
         walkRightAnimation.setPlayMode(Animation.PlayMode.LOOP);
         walkLeftAnimation.setPlayMode(Animation.PlayMode.LOOP);
 
-        playerX = 100f;
-        playerY = 100f;
+        enemyWalkRightAnimation.setPlayMode(Animation.PlayMode.LOOP);
+        enemyWalkLeftAnimation.setPlayMode(Animation.PlayMode.LOOP);
 
         stateTimeSeconds = 0f;
 
@@ -208,15 +265,15 @@ public class PlatformerGame extends ApplicationAdapter {
         camera.update();
     }
 
-
     @Override
     public void render() {
         isOnGround = false;
 
         float deltaTime = Gdx.graphics.getDeltaTime();
-        stateTimeSeconds += deltaTime;
+        stateTimeSeconds = stateTimeSeconds + deltaTime;
 
         updatePlayer(deltaTime);
+        updateEnemies(deltaTime);
         updateCamera();
 
         float red = 0.05f;
@@ -227,29 +284,14 @@ public class PlatformerGame extends ApplicationAdapter {
         Gdx.gl.glClearColor(red, green, blue, alpha);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-
         camera.update();
-//        shapeRenderer.setProjectionMatrix(camera.combined);
-//
-//        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-//        drawTiles();
-//        shapeRenderer.end();
-//
-//        batch.setProjectionMatrix(camera.combined);
-//
-//        batch.begin();
-//        TextureRegion currentFrame = getCurrentPlayerFrame();
-//
-//        float drawX = playerX - (drawWidth - playerWidth) / 2f;     // center sprite on the box
-//        float drawY = playerY - (drawHeight - playerHeight) + spriteFootOffset;        // drop sprite so feet touch ground
-//        batch.draw(currentFrame, drawX, drawY, drawWidth, drawHeight);
-//        batch.end();
 
         // --- DRAW WORLD (TEXTURES) ---
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         drawTilesWithTextures();
         drawPlayerWithBatch();
+        drawEnemiesWithBatch();
         batch.end();
 
         /* ---------- SHAPES (DOORS) ---------- */
@@ -258,7 +300,6 @@ public class PlatformerGame extends ApplicationAdapter {
         drawDoorShapes();
         shapeRenderer.end();
     }
-
 
     private void drawPlayerWithBatch() {
         TextureRegion currentFrame = getCurrentPlayerFrame();
@@ -269,30 +310,39 @@ public class PlatformerGame extends ApplicationAdapter {
         batch.draw(currentFrame, drawX, drawY, drawWidth, drawHeight);
     }
 
-    private void drawPlayerDebugBox() {
-        shapeRenderer.rect(playerX, playerY, playerWidth, playerHeight);
+    private void drawEnemiesWithBatch() {
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+
+            TextureRegion currentFrame = getCurrentEnemyFrame(e);
+
+            float drawX = e.x - (drawWidth - e.width) / 2f;
+            float drawY = e.y - (drawHeight - e.height) + spriteFootOffset;
+
+            batch.draw(currentFrame, drawX, drawY, drawWidth, drawHeight);
+
+            i = i + 1;
+        }
     }
 
-    private void updateMovement(float deltaSeconds) {
-        isMoving = false;
-        isAttacking = false;
-
-        if (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
-            playerX -= moveSpeed * deltaSeconds;
-            facingRight = false;
-            isMoving = true;
+    private TextureRegion getCurrentEnemyFrame(Enemy e) {
+        if (e.isMoving) {
+            if (e.facingRight) {
+                return enemyWalkRightAnimation.getKeyFrame(e.stateTimeSeconds, true);
+            } else {
+                return enemyWalkLeftAnimation.getKeyFrame(e.stateTimeSeconds, true);
+            }
         }
 
-        if (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
-            playerX += moveSpeed * deltaSeconds;
-            facingRight = true;
-            isMoving = true;
+        if (e.facingRight) {
+            return enemyWalkRightAnimation.getKeyFrames()[0];
+        } else {
+            return enemyWalkLeftAnimation.getKeyFrames()[0];
         }
-
     }
 
     private TextureRegion getCurrentPlayerFrame() {
-
         // 1) Attack has highest priority
         if (isAttacking) {
             if (facingRight) {
@@ -311,7 +361,7 @@ public class PlatformerGame extends ApplicationAdapter {
             }
         }
 
-        // 3) Idle (just use first walk frame for now)
+        // 3) Idle
         if (facingRight) {
             return walkRightAnimation.getKeyFrames()[0];
         } else {
@@ -319,11 +369,10 @@ public class PlatformerGame extends ApplicationAdapter {
         }
     }
 
-
     // ----------------------- LEVEL BUILDING -----------------------
 
     private Level createLevel1() {
-        return new Level(Levels.LEVEL_1, TILE_SIZE, 55, 2);
+        return new Level(Levels.LEVEL_1, TILE_SIZE, 5, 2);
     }
 
     private Level createLevel2() {
@@ -354,21 +403,57 @@ public class PlatformerGame extends ApplicationAdapter {
         playerX = currentLevel.getSpawnX();
         playerY = currentLevel.getSpawnY();
         velocityY = 0f;
+
+        buildEnemiesFromLevel();
     }
 
+    private void buildEnemiesFromLevel() {
+        enemies.clear();
 
+        int rows = currentLevel.getRows();
+        int cols = currentLevel.getCols();
+        int tileSize = currentLevel.getTileSize();
 
+        int row = 0;
+        while (row < rows) {
+            int col = 0;
+            while (col < cols) {
+                int tile = currentLevel.getTile(row, col);
+
+                if (tile == TILE_ENEMY_SPAWN) {
+                    float spawnX = col * tileSize;
+                    float spawnY = row * tileSize;
+
+                    Enemy e = new Enemy(spawnX, spawnY, enemyWidth, enemyHeight);
+                    enemies.add(e);
+                }
+
+                col = col + 1;
+            }
+            row = row + 1;
+        }
+    }
 
     // ----------------------- UPDATE LOGIC -----------------------
+
+    private void updateEnemies(float deltaTime) {
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+            e.stateTimeSeconds = e.stateTimeSeconds + deltaTime;
+
+            // Placeholder: no AI yet.
+            // If you want them to patrol, we can add movement + collisions next.
+
+            i = i + 1;
+        }
+    }
 
     private void updatePlayer(float deltaTime) {
         // Horizontal movement
         float deltaX = 0f;
 
         isMoving = false;
-
-
-
 
         boolean leftPressed = Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT);
         boolean rightPressed = Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT);
@@ -422,7 +507,6 @@ public class PlatformerGame extends ApplicationAdapter {
         boolean touchingDoorNow = isTouchingRedDoor();
         boolean touchingAquaDoorNow = isTouchingAquaDoor();
 
-
         if (touchingDoorNow && !wasTouchingDoorLastFrame) {
             System.out.println("Collision with red door.");
 
@@ -460,12 +544,10 @@ public class PlatformerGame extends ApplicationAdapter {
                 applyCurrentLevelSettings();
             }
         }
+
         wasTouchingDoorLastFrame = touchingDoorNow;
         wasTouchingAquaDoorLastFrame = touchingAquaDoorNow;
-
     }
-
-
 
     private boolean isTouchingAquaDoor() {
         float playerLeft = playerX;
@@ -560,15 +642,13 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     private void handleAttackInput(float deltaTime) {
-        // Start attack on a click (only once per click)
         boolean attackPressedThisFrame = Gdx.input.isButtonJustPressed(Input.Buttons.LEFT);
 
         if (attackPressedThisFrame) {
             isAttacking = true;
-            attackTimeSeconds = 0f; // restart animation
+            attackTimeSeconds = 0f;
         }
 
-        // If attacking, advance the attack timer and stop when done
         if (isAttacking) {
             attackTimeSeconds = attackTimeSeconds + deltaTime;
 
@@ -578,7 +658,6 @@ public class PlatformerGame extends ApplicationAdapter {
             }
         }
     }
-
 
     private void moveHorizontal(float deltaX) {
         float newX = playerX + deltaX;
@@ -699,6 +778,13 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     private boolean isSolidTile(int tileX, int tileY) {
+        // Enemy spawn tiles should not be solid. Your Level.isSolidTile probably checks tile==1 only,
+        // but this guard makes it future-proof.
+        int tileValue = currentLevel.getTile(tileY, tileX);
+        if (tileValue == TILE_ENEMY_SPAWN) {
+            return false;
+        }
+
         return currentLevel.isSolidTile(tileX, tileY);
     }
 
@@ -726,43 +812,6 @@ public class PlatformerGame extends ApplicationAdapter {
         }
 
         camera.position.set(camX, camY, 0f);
-    }
-
-    private void drawTiles() {
-        int rows = currentLevel.getRows();
-        int cols = currentLevel.getCols();
-        int tileSize = currentLevel.getTileSize();
-
-        int row = 0;
-        while (row < rows) {
-            int col = 0;
-            while (col < cols) {
-                int tile = currentLevel.getTile(row, col);
-
-                if (tile == 1) {
-                    float x = col * tileSize;
-                    float y = row * tileSize;
-
-                    shapeRenderer.setColor(0.2f, 0.8f, 0.2f, 1f);
-                    shapeRenderer.rect(x, y, tileSize, tileSize);
-                } else if (tile == 2) {
-                    float x = col * tileSize;
-                    float y = row * tileSize;
-
-                    shapeRenderer.setColor(1f, 0f, 0f, 1f);
-                    shapeRenderer.rect(x, y, tileSize, tileSize);
-                } else if (tile == 3) {
-                    float x = col * tileSize;
-                    float y = row * tileSize;
-
-                    shapeRenderer.setColor(0f, 0.5f, 0.5f, 1f);
-                    shapeRenderer.rect(x, y, tileSize, tileSize);
-                }
-
-                col = col + 1;
-            }
-            row = row + 1;
-        }
     }
 
     private void drawDoorShapes() {
@@ -797,7 +846,6 @@ public class PlatformerGame extends ApplicationAdapter {
         }
     }
 
-
     private void drawTilesWithTextures() {
         int rows = currentLevel.getRows();
         int cols = currentLevel.getCols();
@@ -813,8 +861,6 @@ public class PlatformerGame extends ApplicationAdapter {
                 float y = row * tileSize;
 
                 if (tile == 1) {
-                    // Solid tile
-                    // batch.draw(groundRegion, x, y, tileSize, tileSize);
                     batch.draw(grassTexture, x, y, tileSize, tileSize);
                 } else if (tile == 4) {
                     batch.draw(dirtTexture, x, y, tileSize, tileSize);
@@ -837,16 +883,9 @@ public class PlatformerGame extends ApplicationAdapter {
                 } else if (tile == 13) {
                     batch.draw(roundedGrassFlipTexture, x, y, tileSize, tileSize);
                 }
-//                else if (tile == 2) {
-//                    // Red door tile
-////                    batch.draw(redDoorRegion, x, y, tileSize, tileSize);
-//
 
-//                } else if (tile == 3) {
-//                    // Aqua door tile
-////                    batch.draw(aquaDoorRegion, x, y, tileSize, tileSize);
-
-//                }
+                // We intentionally do nothing for TILE_ENEMY_SPAWN here.
+                // It only exists to place enemies in the level array.
 
                 col = col + 1;
             }
@@ -862,11 +901,49 @@ public class PlatformerGame extends ApplicationAdapter {
         if (batch != null) {
             batch.dispose();
         }
+
         if (playerSheetTexture != null) {
             playerSheetTexture.dispose();
         }
+        if (skeletonSheetTexture != null) {
+            skeletonSheetTexture.dispose();
+        }
         if (plainsSheetTexture != null) {
             plainsSheetTexture.dispose();
+        }
+
+        if (grassTexture != null) {
+            grassTexture.dispose();
+        }
+        if (dirtTexture != null) {
+            dirtTexture.dispose();
+        }
+        if (rightTopGrassTexture != null) {
+            rightTopGrassTexture.dispose();
+        }
+        if (leftTopGrassTexture != null) {
+            leftTopGrassTexture.dispose();
+        }
+        if (leftDirtTexture != null) {
+            leftDirtTexture.dispose();
+        }
+        if (rightDirtTexture != null) {
+            rightDirtTexture.dispose();
+        }
+        if (bottomDirtTexture != null) {
+            bottomDirtTexture.dispose();
+        }
+        if (leftBottomDirtTexture != null) {
+            leftBottomDirtTexture.dispose();
+        }
+        if (rightBottomDirtTexture != null) {
+            rightBottomDirtTexture.dispose();
+        }
+        if (roundedGrassTexture != null) {
+            roundedGrassTexture.dispose();
+        }
+        if (roundedGrassFlipTexture != null) {
+            roundedGrassFlipTexture.dispose();
         }
     }
 }

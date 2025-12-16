@@ -67,6 +67,8 @@ public class Level {
                     tiles[rowIndex][colIndex] = 13; // rounded grass section flip
                 } else if (c == '?') {
                     tiles[rowIndex][colIndex] = 2; // red door
+                } else if (c == 'e') {
+                    tiles[rowIndex][colIndex] = 20; // enemy spawn tile id
                 } else if (c == '>') {
                     tiles[rowIndex][colIndex] = 3; // aqua door
                 } else {
