@@ -803,8 +803,8 @@ public class PlatformerGame extends ApplicationAdapter {
         float camX = playerX + playerWidth / 2f;
         float camY = playerY + playerHeight / 2f;
 
-        float halfW = camera.viewportWidth / 2f;
-        float halfH = camera.viewportHeight / 2f;
+        float halfW = camera.viewportWidth * camera.zoom / 2f;
+        float halfH = camera.viewportHeight * camera.zoom / 2f;
 
         if (camX < halfW) {
             camX = halfW;
