@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.math.MathUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -284,6 +285,7 @@ public class PlatformerGame extends ApplicationAdapter {
         Gdx.gl.glClearColor(red, green, blue, alpha);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        camera.zoom = MathUtils.clamp(camera.zoom, 0.5f, 3.0f);
         camera.update();
 
         // --- DRAW WORLD (TEXTURES) ---
@@ -457,6 +459,13 @@ public class PlatformerGame extends ApplicationAdapter {
 
         boolean leftPressed = Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT);
         boolean rightPressed = Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT);
+        if (Gdx.input.isKeyPressed(Input.Keys.Z)) {
+            camera.zoom += 0.02f;
+        }
+
+        if (Gdx.input.isKeyPressed(Input.Keys.X)) {
+            camera.zoom -= 0.02f;
+        }
 
         if (leftPressed && !rightPressed) {
             facingRight = false;
