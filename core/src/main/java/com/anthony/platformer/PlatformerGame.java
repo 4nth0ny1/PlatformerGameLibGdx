@@ -3,6 +3,8 @@ package com.anthony.platformer;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.controllers.Controller;
+import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
@@ -59,6 +61,16 @@ public class PlatformerGame extends ApplicationAdapter {
     private Texture rightBottomDirtTexture;
     private Texture roundedGrassTexture;
     private Texture roundedGrassFlipTexture;
+
+    // Controller mapping (you may need to change these after you test)
+    private static final int AXIS_LEFT_X = 0;
+
+    // Common mappings (often, but not always):
+    private static final int BUTTON_A = 0;   // jump
+    private static final int BUTTON_X = 2;   // attack
+
+    private boolean wasJumpDownLastFrame = false;
+    private boolean wasAttackDownLastFrame = false;
 
     private float spriteFootOffset = 42f; // pixels inside the 48x48 frame (tweak)
 
@@ -146,8 +158,17 @@ public class PlatformerGame extends ApplicationAdapter {
 
     private List<Enemy> enemies = new ArrayList<Enemy>();
 
+    private Controller controller;
+
     @Override
     public void create() {
+
+        controller = null;
+        if (Controllers.getControllers().size > 0) {
+            controller = Controllers.getControllers().first();
+            System.out.println("Using controller: " + controller.getName());
+        }
+
         batch = new SpriteBatch();
 
         playerSheetTexture = new Texture("player.png");
@@ -457,8 +478,26 @@ public class PlatformerGame extends ApplicationAdapter {
 
         isMoving = false;
 
-        boolean leftPressed = Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT);
-        boolean rightPressed = Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT);
+        float axisX = 0f;
+
+        if (controller != null) {
+            axisX = controller.getAxis(AXIS_LEFT_X); // left stick X is often 0
+        }
+
+        // deadzone so it doesn't drift
+        float deadzone = 0.20f;
+        if (Math.abs(axisX) < deadzone) {
+            axisX = 0f;
+        }
+
+        boolean leftPressed = axisX < 0f
+            || Gdx.input.isKeyPressed(Input.Keys.A)
+            || Gdx.input.isKeyPressed(Input.Keys.LEFT);
+
+        boolean rightPressed = axisX > 0f
+            || Gdx.input.isKeyPressed(Input.Keys.D)
+            || Gdx.input.isKeyPressed(Input.Keys.RIGHT);
+
         if (Gdx.input.isKeyPressed(Input.Keys.Z)) {
             camera.zoom += 0.02f;
         }
@@ -483,9 +522,33 @@ public class PlatformerGame extends ApplicationAdapter {
             moveHorizontal(deltaX);
         }
 
-        // Jump / double jump
-        handleJumpInput();
-        handleAttackInput(deltaTime);
+        // ---------------- CONTROLLER + KB/MOUSE INPUT MERGE ----------------
+
+        boolean jumpDown = false;
+        boolean attackDown = false;
+
+        if (controller != null) {
+            jumpDown = controller.getButton(BUTTON_A);
+            attackDown = controller.getButton(BUTTON_X);
+        }
+
+        // Keep keyboard/mouse too
+        // Jump: Space (down)
+        jumpDown = jumpDown || Gdx.input.isKeyPressed(Input.Keys.SPACE);
+
+        // Attack: left mouse (down)
+        attackDown = attackDown || Gdx.input.isButtonPressed(Input.Buttons.LEFT);
+
+        // Convert "down" to "pressed this frame" (edge detect)
+        boolean jumpPressedThisFrame = jumpDown && !wasJumpDownLastFrame;
+        boolean attackPressedThisFrame = attackDown && !wasAttackDownLastFrame;
+
+        wasJumpDownLastFrame = jumpDown;
+        wasAttackDownLastFrame = attackDown;
+
+        // Jump / double jump + attack
+        handleJumpInput(jumpPressedThisFrame);
+        handleAttackInput(deltaTime, attackPressedThisFrame);
 
         // Gravity
         velocityY = velocityY + gravity * deltaTime;
@@ -638,9 +701,8 @@ public class PlatformerGame extends ApplicationAdapter {
         return false;
     }
 
-    private void handleJumpInput() {
-        boolean jumpPressedThisFrame = Gdx.input.isKeyJustPressed(Input.Keys.SPACE);
-
+    // CHANGED: takes jumpPressedThisFrame from updatePlayer()
+    private void handleJumpInput(boolean jumpPressedThisFrame) {
         if (jumpPressedThisFrame) {
             if (jumpsUsed < maxJumps) {
                 velocityY = jumpVelocity;
@@ -650,9 +712,8 @@ public class PlatformerGame extends ApplicationAdapter {
         }
     }
 
-    private void handleAttackInput(float deltaTime) {
-        boolean attackPressedThisFrame = Gdx.input.isButtonJustPressed(Input.Buttons.LEFT);
-
+    // CHANGED: takes attackPressedThisFrame from updatePlayer()
+    private void handleAttackInput(float deltaTime, boolean attackPressedThisFrame) {
         if (attackPressedThisFrame) {
             isAttacking = true;
             attackTimeSeconds = 0f;

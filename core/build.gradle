@@ -7,4 +7,7 @@ dependencies {
   if(enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-annotations:$graalHelperVersion"
   }
+  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-core:$gdxControllersVersion"
+
+
 }

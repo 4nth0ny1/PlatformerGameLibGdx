@@ -37,6 +37,8 @@ dependencies {
     implementation "io.github.berstanio:gdx-svmhelper-backend-lwjgl3:$graalHelperVersion"
 
     }
+  implementation "com.badlogicgames.gdx-controllers:gdx-controllers-desktop:$gdxControllersVersion"
+
 }
 
 def os = System.properties['os.name'].toLowerCase(Locale.ROOT)
