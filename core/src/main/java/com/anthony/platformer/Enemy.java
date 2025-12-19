@@ -52,6 +52,10 @@ public class Enemy {
 
     public boolean isChasing = false;
 
+    // ---------------- ENEMY VERTICAL PHYSICS ----------------
+    public float velocityY = 0f;
+    public boolean isOnGround = false;
+
 
     public int hp = 3;
 

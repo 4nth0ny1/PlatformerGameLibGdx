@@ -150,6 +150,11 @@ public class PlatformerGame extends ApplicationAdapter {
     private float velocityY = 0f;
     private float jumpVelocity = 300f;
 
+    // Enemy gravity can match player gravity
+    private static final float ENEMY_GRAVITY = -800f;
+    private static final float ENEMY_TERMINAL_VEL = -900f;
+
+
     private boolean facingRight = true;
     private boolean isMoving = false;
     private boolean isAttacking = false;
@@ -657,6 +662,23 @@ public class PlatformerGame extends ApplicationAdapter {
                 continue;
             }
 
+            // ---------------- ENEMY GRAVITY ----------------
+            e.velocityY = e.velocityY + ENEMY_GRAVITY * deltaTime;
+
+            if (e.velocityY < ENEMY_TERMINAL_VEL) {
+                e.velocityY = ENEMY_TERMINAL_VEL;
+            }
+
+            float deltaY = e.velocityY * deltaTime;
+            if (deltaY != 0f) aaa
+
+dddddddddddddddddddd            if (e.y < 0f) {
+                e.y = 0f;
+                e.velocityY = 0f;
+                e.isOnGround = true;
+            }
+
+
             // Stun timer
             if (e.stunSeconds > 0f) {
                 e.stunSeconds = e.stunSeconds - deltaTime;
@@ -1157,6 +1179,65 @@ public class PlatformerGame extends ApplicationAdapter {
             tileY = tileY + 1;
         }
     }
+
+    private void moveEnemyVertical(Enemy e, float deltaY) {
+        e.y = e.y + deltaY;
+        e.isOnGround = false;
+        resolveEnemyVerticalCollisions(e, deltaY);
+    }
+
+    private void resolveEnemyVerticalCollisions(Enemy e, float deltaY) {
+        float left = e.x;
+        float right = e.x + e.width;
+        float bottom = e.y;
+        float top = e.y + e.height;
+
+        int minTileX = (int) (left / TILE_SIZE);
+        int maxTileX = (int) (right / TILE_SIZE);
+        int minTileY = (int) (bottom / TILE_SIZE);
+        int maxTileY = (int) (top / TILE_SIZE);
+
+        int ty = minTileY;
+        while (ty <= maxTileY) {
+            int tx = minTileX;
+            while (tx <= maxTileX) {
+
+                if (!isSolidTileForEnemy(tx, ty)) {
+                    tx = tx + 1;
+                    continue;
+                }
+
+                float tileLeft = tx * TILE_SIZE;
+                float tileRight = tileLeft + TILE_SIZE;
+                float tileBottom = ty * TILE_SIZE;
+                float tileTop = tileBottom + TILE_SIZE;
+
+                boolean overlapX = right > tileLeft && left < tileRight;
+                boolean overlapY = top > tileBottom && bottom < tileTop;
+
+                if (overlapX && overlapY) {
+                    if (deltaY > 0f) {
+                        // moving up -> hit ceiling
+                        e.y = tileBottom - e.height;
+                        e.velocityY = 0f;
+                        return;
+                    }
+
+                    if (deltaY < 0f) {
+                        // moving down -> land on ground
+                        e.y = tileTop;
+                        e.velocityY = 0f;
+                        e.isOnGround = true;
+                        return;
+                    }
+                }
+
+                tx = tx + 1;
+            }
+            ty = ty + 1;
+        }
+    }
+
 
     private void resolveVerticalCollisions(float deltaY) {
         float playerLeft = playerX;
