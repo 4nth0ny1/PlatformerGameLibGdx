@@ -618,9 +618,23 @@ public class PlatformerGame extends ApplicationAdapter {
                     float spawnX = col * tileSize;
                     float spawnY = row * tileSize;
 
-                    Enemy e = new Enemy(spawnX, spawnY, enemyWidth, enemyHeight);
+                    float groundTopY = findGroundYBelow(spawnX, spawnY, enemyWidth);
+
+                    // place enemy standing on the ground tile
+                    float fixedY = groundTopY;
+
+                    Enemy e = new Enemy(spawnX, fixedY, enemyWidth, enemyHeight);
+
+                    // Patrol bounds: 6 tiles left/right from spawn (tune this)
+                    float patrolRadiusPixels = 6f * TILE_SIZE;
+                    e.patrolLeftX = Math.max(0f, spawnX - patrolRadiusPixels);
+                    e.patrolRightX = Math.min(worldWidthPixels - e.width, spawnX + patrolRadiusPixels);
+
+                    e.moveDir = 1;
+
                     enemies.add(e);
                 }
+
 
                 col = col + 1;
             }
@@ -713,6 +727,8 @@ public class PlatformerGame extends ApplicationAdapter {
                     e.facingRight = playerCenterX > enemyCenterX;
                 }
             }
+            updateEnemyMovementAI(e, deltaTime);
+
 
             i = i + 1;
         }
@@ -1204,6 +1220,234 @@ public class PlatformerGame extends ApplicationAdapter {
 
         return currentLevel.isSolidTile(tileX, tileY);
     }
+
+    private boolean isSolidTileForEnemy(int tileX, int tileY) {
+        // Treat outside world as solid so enemies turn around
+        if (tileX < 0 || tileY < 0) {
+            return true;
+        }
+
+        int maxTileX = currentLevel.getCols() - 1;
+        int maxTileY = currentLevel.getRows() - 1;
+
+        if (tileX > maxTileX || tileY > maxTileY) {
+            return true;
+        }
+
+        int tileValue = currentLevel.getTile(tileY, tileX);
+
+        // Enemy spawn marker should not block movement
+        if (tileValue == TILE_ENEMY_SPAWN) {
+            return false;
+        }
+
+        return currentLevel.isSolidTile(tileX, tileY);
+    }
+
+    private float findGroundYBelow(float startX, float startY, float entityWidth) {
+        // Start checking from the tile row at startY and go downward until we hit a solid tile.
+        int startColLeft = (int) (startX / TILE_SIZE);
+        int startColRight = (int) ((startX + entityWidth - 1f) / TILE_SIZE);
+
+        int startRow = (int) (startY / TILE_SIZE) - 1;
+
+        int row = startRow;
+        while (row >= 0) {
+            boolean foundSolid = false;
+
+            int col = startColLeft;
+            while (col <= startColRight) {
+                if (isSolidTileForEnemy(col, row)) {
+                    foundSolid = true;
+                    break;
+                }
+                col = col + 1;
+            }
+
+            if (foundSolid) {
+                // Ground tile top in world coords
+                float tileTopY = (row + 1) * TILE_SIZE;
+                return tileTopY;
+            }
+
+            row = row - 1;
+        }
+
+        // If nothing solid below, just return original
+        return startY;
+    }
+
+
+    private boolean enemyWouldCollideAtX(Enemy e, float newX) {
+        float left = newX;
+        float right = newX + e.width;
+
+        float bottom = e.y;
+        float top = e.y + e.height;
+
+        int minTileX = (int) (left / TILE_SIZE);
+        int maxTileX = (int) (right / TILE_SIZE);
+
+        int minTileY = (int) (bottom / TILE_SIZE);
+        int maxTileY = (int) (top / TILE_SIZE);
+
+        int ty = minTileY;
+        while (ty <= maxTileY) {
+            int tx = minTileX;
+            while (tx <= maxTileX) {
+                if (isSolidTileForEnemy(tx, ty)) {
+                    // basic AABB overlap test with this tile
+                    float tileLeft = tx * TILE_SIZE;
+                    float tileRight = tileLeft + TILE_SIZE;
+
+                    float tileBottom = ty * TILE_SIZE;
+                    float tileTop = tileBottom + TILE_SIZE;
+
+                    boolean overlapX = right > tileLeft && left < tileRight;
+                    boolean overlapY = top > tileBottom && bottom < tileTop;
+
+                    if (overlapX && overlapY) {
+                        return true;
+                    }
+                }
+                tx = tx + 1;
+            }
+            ty = ty + 1;
+        }
+
+        return false;
+    }
+
+    private boolean enemyHasGroundAhead(Enemy e, int dir) {
+        // Look one pixel ahead of the enemy's front foot
+        float frontX;
+        if (dir > 0) {
+            frontX = e.x + e.width + 1f;
+        } else {
+            frontX = e.x - 1f;
+        }
+
+        float footY = e.y - 1f;
+
+        int tileX = (int) (frontX / TILE_SIZE);
+        int tileY = (int) (footY / TILE_SIZE);
+
+        return isSolidTileForEnemy(tileX, tileY);
+    }
+
+    private boolean enemyHasWallAhead(Enemy e, int dir) {
+        float frontX;
+        if (dir > 0) {
+            frontX = e.x + e.width + 1f;
+        } else {
+            frontX = e.x - 1f;
+        }
+
+        int tileX = (int) (frontX / TILE_SIZE);
+
+        // Check along enemy vertical body
+        float bodyBottom = e.y + 1f;
+        float bodyTop = e.y + e.height - 1f;
+
+        int minTileY = (int) (bodyBottom / TILE_SIZE);
+        int maxTileY = (int) (bodyTop / TILE_SIZE);
+
+        int ty = minTileY;
+        while (ty <= maxTileY) {
+            if (isSolidTileForEnemy(tileX, ty)) {
+                return true;
+            }
+            ty = ty + 1;
+        }
+
+        return false;
+    }
+
+    private void updateEnemyMovementAI(Enemy e, float deltaTime) {
+        // Do not move if dead or stunned
+        if (e.isDead) {
+            e.isMoving = false;
+            return;
+        }
+        if (e.stunSeconds > 0f) {
+            e.isMoving = false;
+            return;
+        }
+
+        // If currently attacking, do not move (keeps swings clean)
+        if (e.isAttacking) {
+            e.isMoving = false;
+            return;
+        }
+
+        float enemyCenterX = e.x + e.width / 2f;
+        float playerCenterX = playerX + playerWidth / 2f;
+
+        float distX = playerCenterX - enemyCenterX;
+        float absDistX = Math.abs(distX);
+
+        // Chase toggle (hysteresis prevents jitter)
+        if (!e.isChasing && absDistX <= e.aggroRangePixels) {
+            e.isChasing = true;
+        } else if (e.isChasing && absDistX >= e.disengageRangePixels) {
+            e.isChasing = false;
+        }
+
+        float speed;
+        int dir;
+
+        if (e.isChasing) {
+            // Chase the player
+            dir = (distX >= 0f) ? 1 : -1;
+            speed = e.chaseSpeed;
+        } else {
+            // Patrol
+            dir = e.moveDir;
+            speed = e.patrolSpeed;
+
+            // Patrol bounds
+            if (e.x <= e.patrolLeftX) {
+                dir = 1;
+            }
+            if (e.x >= e.patrolRightX) {
+                dir = -1;
+            }
+
+            // Turn around if ledge or wall ahead
+            if (!enemyHasGroundAhead(e, dir) || enemyHasWallAhead(e, dir)) {
+                dir = -dir;
+            }
+        }
+
+        // Apply movement
+        float dx = dir * speed * deltaTime;
+        float newX = e.x + dx;
+
+        // Collision: if would collide, turn around and stop this frame
+        if (enemyWouldCollideAtX(e, newX)) {
+            e.moveDir = -dir;
+            e.isMoving = false;
+            return;
+        }
+
+        // Commit movement and update direction/facing
+        e.x = newX;
+
+        // Keep inside world
+        if (e.x < 0f) {
+            e.x = 0f;
+            dir = 1;
+        }
+        if (e.x + e.width > worldWidthPixels) {
+            e.x = worldWidthPixels - e.width;
+            dir = -1;
+        }
+
+        e.moveDir = dir;
+        e.facingRight = dir > 0;
+        e.isMoving = true;
+    }
+
 
     // ----------------------- CAMERA & HITBOX UPDATES -----------------------
     private void updateCamera() {

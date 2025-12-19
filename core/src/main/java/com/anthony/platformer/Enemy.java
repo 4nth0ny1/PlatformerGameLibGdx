@@ -38,6 +38,21 @@ public class Enemy {
     public boolean deathStarted = false;
     public boolean readyToRemove = false;
 
+    // ---------------- ENEMY MOVEMENT AI ----------------
+    public float patrolLeftX = 0f;
+    public float patrolRightX = 0f;
+
+    public int moveDir = 1; // 1 = right, -1 = left
+
+    public float patrolSpeed = 60f;
+    public float chaseSpeed = 90f;
+
+    public float aggroRangePixels = 140f; // start chasing when player is this close
+    public float disengageRangePixels = 180f; // stop chasing when farther than this
+
+    public boolean isChasing = false;
+
+
     public int hp = 3;
 
     public Enemy(float x, float y, float width, float height) {
