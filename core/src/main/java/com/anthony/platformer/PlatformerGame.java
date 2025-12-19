@@ -670,9 +670,12 @@ public class PlatformerGame extends ApplicationAdapter {
             }
 
             float deltaY = e.velocityY * deltaTime;
-            if (deltaY != 0f) aaa
+            if (deltaY != 0f) {
+                moveEnemyVertical(e, deltaY);
+            }
 
-dddddddddddddddddddd            if (e.y < 0f) {
+// Prevent falling below bottom of world
+            if (e.y < 0f) {
                 e.y = 0f;
                 e.velocityY = 0f;
                 e.isOnGround = true;
