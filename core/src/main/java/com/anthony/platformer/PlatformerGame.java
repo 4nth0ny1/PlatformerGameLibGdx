@@ -13,6 +13,8 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Rectangle;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,6 +66,37 @@ public class PlatformerGame extends ApplicationAdapter {
 
     private ShapeRenderer shapeRenderer;
     private OrthographicCamera camera;
+
+    // ---------------- HITBOXES ----------------
+
+    private final Rectangle playerHurtbox = new Rectangle();
+    private final Rectangle playerSwordHitbox = new Rectangle();
+
+    // Optional: basic "invincibility" so you don't take damage every frame
+    private float playerHurtCooldownSeconds = 0f;
+    private static final float PLAYER_HURT_COOLDOWN = 0.50f;
+
+    private int playerHp = 5;
+
+    // Sword tuning
+    private static final float SWORD_WIDTH = 14f;
+    private static final float SWORD_HEIGHT = 10f;
+    private static final float SWORD_FORWARD_OFFSET = 10f;  // how far in front of player
+    private static final float SWORD_VERTICAL_OFFSET = 4f;  // height relative to playerY
+
+    // ---------------- PLAYER DAMAGE COOLDOWNS ----------------
+
+    private float playerGlobalHurtLockSeconds = 0f;
+    private static final float PLAYER_GLOBAL_HURT_LOCK = 0.15f;
+
+    // Body contact damage pacing
+    private float playerBodyHurtCooldownSeconds = 0f;
+    private static final float PLAYER_BODY_HURT_COOLDOWN = 0.60f;
+
+    // Enemy sword damage pacing
+    private float playerSwordHurtCooldownSeconds = 0f;
+    private static final float PLAYER_SWORD_HURT_COOLDOWN = 0.40f;
+
 
     // ---------------- TILE & WORLD SETTINGS ----------------
 
@@ -271,7 +304,29 @@ public class PlatformerGame extends ApplicationAdapter {
 
         updatePlayer(deltaTime);
         updateEnemies(deltaTime);
+        updatePlayerHurtbox();
+        updatePlayerSwordHitbox();
+        updateEnemyHitboxes();
+        handlePlayerSwordHits();
+        handleEnemySwordHitsPlayer();
+        handleEnemyBodyHitsPlayer();
         updateCamera();
+
+        if (isAttacking) {
+            System.out.println("Sword box: x=" + playerSwordHitbox.x
+                + " y=" + playerSwordHitbox.y
+                + " w=" + playerSwordHitbox.width
+                + " h=" + playerSwordHitbox.height);
+        }
+
+//        if (enemies.size() > 0) {
+//            Enemy e = enemies.get(0);
+//            System.out.println("Enemy0 hurtbox: x=" + e.hurtbox.x
+//                + " y=" + e.hurtbox.y
+//                + " w=" + e.hurtbox.width
+//                + " h=" + e.hurtbox.height);
+//        }
+
 
         float red = 0.05f;
         float green = 0.05f;
@@ -296,6 +351,10 @@ public class PlatformerGame extends ApplicationAdapter {
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawDoorShapes();
+        shapeRenderer.end();
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        drawHitboxesDebug();
         shapeRenderer.end();
     }
 
@@ -433,19 +492,58 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     // ----------------------- UPDATE LOGIC -----------------------
-
     private void updateEnemies(float deltaTime) {
         int i = 0;
         while (i < enemies.size()) {
             Enemy e = enemies.get(i);
             e.stateTimeSeconds = e.stateTimeSeconds + deltaTime;
 
-            // Placeholder: no AI yet.
-            // If you want them to patrol, we can add movement + collisions next.
+            // -------- Attack cooldown tick --------
+            if (e.attackCooldownSeconds > 0f) {
+                e.attackCooldownSeconds = e.attackCooldownSeconds - deltaTime;
+                if (e.attackCooldownSeconds < 0f) {
+                    e.attackCooldownSeconds = 0f;
+                }
+            }
+
+            // -------- Attack active tick --------
+            if (e.isAttacking) {
+                e.attackTimeSeconds = e.attackTimeSeconds + deltaTime;
+
+                if (e.attackTimeSeconds >= e.attackDurationSeconds) {
+                    e.isAttacking = false;
+                    e.attackTimeSeconds = 0f;
+
+                    // after a swing, go on cooldown
+                    e.attackCooldownSeconds = e.attackCooldownDurationSeconds;
+                }
+            }
+
+            // -------- Start attack if close enough --------
+            if (!e.isAttacking && e.attackCooldownSeconds == 0f) {
+                float enemyCenterX = e.x + e.width / 2f;
+                float playerCenterX = playerX + playerWidth / 2f;
+
+                float distanceX = enemyCenterX - playerCenterX;
+                float absDistanceX = Math.abs(distanceX);
+
+                float attackRange = 40f;
+
+                if (absDistanceX <= attackRange) {
+                    e.isAttacking = true;
+                    e.attackTimeSeconds = 0f;
+
+                    // Face the player
+                    e.facingRight = playerCenterX > enemyCenterX;
+
+                    System.out.println("ENEMY ATTACK START");
+                }
+            }
 
             i = i + 1;
         }
     }
+
 
     private void updatePlayer(float deltaTime) {
         // Horizontal movement
@@ -464,6 +562,36 @@ public class PlatformerGame extends ApplicationAdapter {
         if (Math.abs(axisX) < deadzone) {
             axisX = 0f;
         }
+
+        if (playerHurtCooldownSeconds > 0f) {
+            playerHurtCooldownSeconds = playerHurtCooldownSeconds - deltaTime;
+            if (playerHurtCooldownSeconds < 0f) {
+                playerHurtCooldownSeconds = 0f;
+            }
+        }
+
+        if (playerGlobalHurtLockSeconds > 0f) {
+            playerGlobalHurtLockSeconds = playerGlobalHurtLockSeconds - deltaTime;
+            if (playerGlobalHurtLockSeconds < 0f) {
+                playerGlobalHurtLockSeconds = 0f;
+            }
+        }
+
+        if (playerBodyHurtCooldownSeconds > 0f) {
+            playerBodyHurtCooldownSeconds = playerBodyHurtCooldownSeconds - deltaTime;
+            if (playerBodyHurtCooldownSeconds < 0f) {
+                playerBodyHurtCooldownSeconds = 0f;
+            }
+        }
+
+        if (playerSwordHurtCooldownSeconds > 0f) {
+            playerSwordHurtCooldownSeconds = playerSwordHurtCooldownSeconds - deltaTime;
+            if (playerSwordHurtCooldownSeconds < 0f) {
+                playerSwordHurtCooldownSeconds = 0f;
+            }
+        }
+
+
 
         boolean leftPressed = axisX < 0f
             || Gdx.input.isKeyPressed(Input.Keys.A)
@@ -596,6 +724,39 @@ public class PlatformerGame extends ApplicationAdapter {
         wasTouchingAquaDoorLastFrame = touchingAquaDoorNow;
     }
 
+    private void handleEnemyBodyHitsPlayer() {
+        if (playerGlobalHurtLockSeconds > 0f) {
+            return;
+        }
+        if (playerBodyHurtCooldownSeconds > 0f) {
+            return;
+        }
+
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+
+            if (playerHurtbox.overlaps(e.hurtbox)) {
+                playerHp = playerHp - 1;
+
+                playerGlobalHurtLockSeconds = PLAYER_GLOBAL_HURT_LOCK;
+                playerBodyHurtCooldownSeconds = PLAYER_BODY_HURT_COOLDOWN;
+
+                System.out.println("PLAYER HIT by ENEMY BODY! HP = " + playerHp);
+
+                if (playerHp <= 0) {
+                    System.out.println("PLAYER DEAD");
+                }
+
+                return;
+            }
+
+            i = i + 1;
+        }
+    }
+
+
+
     private boolean isTouchingAquaDoor() {
         float playerLeft = playerX;
         float playerRight = playerX + playerWidth;
@@ -687,13 +848,22 @@ public class PlatformerGame extends ApplicationAdapter {
         }
     }
 
-    // CHANGED: takes attackPressedThisFrame from updatePlayer()
     private void handleAttackInput(float deltaTime, boolean attackPressedThisFrame) {
-        if (attackPressedThisFrame) {
+        // Start attack only on edge press
+        if (attackPressedThisFrame && !isAttacking) {
+            System.out.println("ATTACK START");
             isAttacking = true;
             attackTimeSeconds = 0f;
+
+            int i = 0;
+            while (i < enemies.size()) {
+                enemies.get(i).wasHitThisAttack = false;
+                i = i + 1;
+            }
         }
 
+
+        // If attacking, advance timer and end attack when done
         if (isAttacking) {
             attackTimeSeconds = attackTimeSeconds + deltaTime;
 
@@ -703,6 +873,7 @@ public class PlatformerGame extends ApplicationAdapter {
             }
         }
     }
+
 
     private void moveHorizontal(float deltaX) {
         float newX = playerX + deltaX;
@@ -858,6 +1029,145 @@ public class PlatformerGame extends ApplicationAdapter {
 
         camera.position.set(camX, camY, 0f);
     }
+
+    private void updatePlayerHurtbox() {
+        playerHurtbox.set(playerX, playerY, playerWidth, playerHeight);
+    }
+
+    private void updatePlayerSwordHitbox() {
+        if (!isAttacking) {
+            playerSwordHitbox.set(0f, 0f, 0f, 0f);
+            return;
+        }
+
+        float swordX;
+        if (facingRight) {
+            swordX = playerX + playerWidth + SWORD_FORWARD_OFFSET;
+        } else {
+            swordX = playerX - SWORD_FORWARD_OFFSET - SWORD_WIDTH;
+        }
+
+        float swordY = playerY + SWORD_VERTICAL_OFFSET;
+
+        playerSwordHitbox.set(swordX, swordY, SWORD_WIDTH, SWORD_HEIGHT);
+    }
+
+    private void updateEnemyHitboxes() {
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+
+            // Enemy hurtbox follows its position
+            e.updateHurtbox();
+
+            // Enemy sword hitbox: ON only during attacks
+            if (e.isAttacking) {
+                float swordW = 14f;
+                float swordH = 10f;
+
+                float forward = 6f;
+                float vertical = 4f;
+
+                float swordX;
+                if (e.facingRight) {
+                    swordX = e.x + e.width + forward;
+                } else {
+                    swordX = e.x - forward - swordW;
+                }
+
+                float swordY = e.y + vertical;
+
+                e.swordHitbox.set(swordX, swordY, swordW, swordH);
+            } else {
+                e.clearSwordHitbox();
+            }
+
+            i = i + 1;
+        }
+    }
+
+
+    private void handlePlayerSwordHits() {
+        if (!isAttacking) {
+            return;
+        }
+
+        System.out.println("Checking sword hits... enemies=" + enemies.size());
+
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+
+            if (!e.wasHitThisAttack && playerSwordHitbox.overlaps(e.hurtbox)) {
+                e.hp = e.hp - 1;
+                e.wasHitThisAttack = true;
+
+                // Optional: tiny hit feedback (later we can add knockback)
+                System.out.println("Enemy hit! HP = " + e.hp);
+
+                if (e.hp <= 0) {
+                    enemies.remove(i);
+                    continue; // do NOT increment i
+                }
+            }
+
+            i = i + 1;
+        }
+    }
+
+
+    private void drawHitboxesDebug() {
+        // Player hurtbox (green)
+        shapeRenderer.setColor(0f, 1f, 0f, 1f);
+        shapeRenderer.rect(playerHurtbox.x, playerHurtbox.y, playerHurtbox.width, playerHurtbox.height);
+
+        // Player sword (yellow)
+        shapeRenderer.setColor(1f, 1f, 0f, 1f);
+        shapeRenderer.rect(playerSwordHitbox.x, playerSwordHitbox.y, playerSwordHitbox.width, playerSwordHitbox.height);
+
+        // Enemy hurtboxes (red)
+        shapeRenderer.setColor(1f, 0f, 0f, 1f);
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+            shapeRenderer.rect(e.hurtbox.x, e.hurtbox.y, e.hurtbox.width, e.hurtbox.height);
+            i = i + 1;
+        }
+    }
+
+    private void handleEnemySwordHitsPlayer() {
+        if (playerGlobalHurtLockSeconds > 0f) {
+            return;
+        }
+        if (playerSwordHurtCooldownSeconds > 0f) {
+            return;
+        }
+
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+
+            if (e.swordHitbox.width > 0f && e.swordHitbox.height > 0f) {
+                if (e.swordHitbox.overlaps(playerHurtbox)) {
+                    playerHp = playerHp - 1;
+
+                    playerGlobalHurtLockSeconds = PLAYER_GLOBAL_HURT_LOCK;
+                    playerSwordHurtCooldownSeconds = PLAYER_SWORD_HURT_COOLDOWN;
+
+                    System.out.println("PLAYER HIT by ENEMY SWORD! HP = " + playerHp);
+
+                    if (playerHp <= 0) {
+                        System.out.println("PLAYER DEAD");
+                    }
+
+                    return;
+                }
+            }
+
+            i = i + 1;
+        }
+    }
+
 
     private void drawDoorShapes() {
         int rows = currentLevel.getRows();
