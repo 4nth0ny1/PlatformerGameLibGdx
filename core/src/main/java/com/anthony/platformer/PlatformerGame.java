@@ -15,7 +15,6 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -51,24 +50,38 @@ public class PlatformerGame extends ApplicationAdapter {
 
     private float spriteFootOffset = 42f; // pixels inside the 48x48 frame (tweak)
 
+    // ---------------- ANIMATIONS (PLAYER) ----------------
     private Animation<TextureRegion> walkRightAnimation;
     private Animation<TextureRegion> walkLeftAnimation;
     private Animation<TextureRegion> attackRightAnimation;
     private Animation<TextureRegion> attackLeftAnimation;
 
+    // Optional (Step 6): player death animation
+    private Animation<TextureRegion> deathRightAnimation;
+    private Animation<TextureRegion> deathLeftAnimation;
+
+    // ---------------- ANIMATIONS (ENEMY) ----------------
     private Animation<TextureRegion> enemyWalkRightAnimation;
     private Animation<TextureRegion> enemyWalkLeftAnimation;
 
+    // Step 6: enemy attack + death animations
+    private Animation<TextureRegion> enemyAttackRightAnimation;
+    private Animation<TextureRegion> enemyAttackLeftAnimation;
+    private Animation<TextureRegion> enemyDeathRightAnimation;
+    private Animation<TextureRegion> enemyDeathLeftAnimation;
+
+    // ---------------- PLAYER ATTACK TIMING ----------------
     private float attackTimeSeconds = 0f;
     private float attackDurationSeconds = 0f;
 
-    private float stateTimeSeconds;
+    // ---------------- GLOBAL (PLAYER) ANIMATION TIME ----------------
+    private float playerAnimTimeSeconds = 0f;
+    private boolean playerDeathStarted = false;
 
     private ShapeRenderer shapeRenderer;
     private OrthographicCamera camera;
 
     // ---------------- HITBOXES ----------------
-
     private final Rectangle playerHurtbox = new Rectangle();
     private final Rectangle playerSwordHitbox = new Rectangle();
 
@@ -81,29 +94,36 @@ public class PlatformerGame extends ApplicationAdapter {
     // Sword tuning
     private static final float SWORD_WIDTH = 14f;
     private static final float SWORD_HEIGHT = 10f;
-    private static final float SWORD_FORWARD_OFFSET = 10f;  // how far in front of player
-    private static final float SWORD_VERTICAL_OFFSET = 4f;  // height relative to playerY
+    private static final float SWORD_FORWARD_OFFSET = 10f;
+    private static final float SWORD_VERTICAL_OFFSET = 4f;
 
     // ---------------- PLAYER DAMAGE COOLDOWNS ----------------
-
     private float playerGlobalHurtLockSeconds = 0f;
     private static final float PLAYER_GLOBAL_HURT_LOCK = 0.15f;
 
-    // Body contact damage pacing
     private float playerBodyHurtCooldownSeconds = 0f;
     private static final float PLAYER_BODY_HURT_COOLDOWN = 0.60f;
 
-    // Enemy sword damage pacing
     private float playerSwordHurtCooldownSeconds = 0f;
     private static final float PLAYER_SWORD_HURT_COOLDOWN = 0.40f;
 
+    // ---------------- HIT REACTION (PLAYER) ----------------
+    private float playerStunSeconds = 0f;
+    private float playerKnockbackVelX = 0f;
+
+    private static final float PLAYER_STUN_DURATION = 0.12f;
+    private static final float PLAYER_KNOCKBACK_SPEED = 260f;
+    private static final float PLAYER_KNOCKBACK_FRICTION = 1600f;
+
+    // ---------------- HIT REACTION (ENEMY) ----------------
+    private static final float ENEMY_STUN_DURATION = 0.10f;
+    private static final float ENEMY_KNOCKBACK_SPEED = 220f;
+    private static final float ENEMY_KNOCKBACK_FRICTION = 1400f;
 
     // ---------------- TILE & WORLD SETTINGS ----------------
-
     private static final int TILE_SIZE = 16;
 
     // Put this value in your Levels.LEVEL_X arrays wherever you want an enemy to spawn.
-    // Example: tile value 20 means "spawn enemy here"
     private static final int TILE_ENEMY_SPAWN = 20;
 
     private Level currentLevel;
@@ -116,7 +136,6 @@ public class PlatformerGame extends ApplicationAdapter {
     private boolean wasTouchingAquaDoorLastFrame = false;
 
     // ---------------- PLAYER SETTINGS ----------------
-
     private float playerWidth = 16f;
     private float playerHeight = 16f;
 
@@ -135,16 +154,31 @@ public class PlatformerGame extends ApplicationAdapter {
     private boolean isMoving = false;
     private boolean isAttacking = false;
 
+    // ---------------- SPRITE SHEET CONSTANTS ----------------
     private static final int FRAME_WIDTH = 48;
     private static final int FRAME_HEIGHT = 48;
+
+    // Player
     private static final int WALK_ROW = 1;
     private static final int WALK_FRAMES = 6;
 
-    private static final int ENEMY_WALK_ROW = 1;
-    private static final int ENEMY_FRAMES = 6;
-
     private static final int ATTACK_ROW = 7;
     private static final int ATTACK_FRAMES = 4;
+
+    // IMPORTANT: You may need to change these rows/frames to match your sheet.
+    // Enemy
+    private static final int ENEMY_WALK_ROW = 1;
+    private static final int ENEMY_WALK_FRAMES = 6;
+
+    private static final int ENEMY_ATTACK_ROW = 7;
+    private static final int ENEMY_ATTACK_FRAMES = 6;
+
+    private static final int ENEMY_DEATH_ROW = 12;
+    private static final int ENEMY_DEATH_FRAMES = 5;
+
+    // Player death (optional)
+    private static final int PLAYER_DEATH_ROW = 9;
+    private static final int PLAYER_DEATH_FRAMES = 3;
 
     private float drawWidth;
     private float drawHeight;
@@ -155,7 +189,6 @@ public class PlatformerGame extends ApplicationAdapter {
     private boolean isOnGround = false;
 
     // ---------------- PLAINS TILE REGIONS ----------------
-
     private TextureRegion[][] plainsGrid;
 
     private TextureRegion groundRegion;
@@ -163,7 +196,6 @@ public class PlatformerGame extends ApplicationAdapter {
     private TextureRegion aquaDoorRegion;
 
     // ---------------- ENEMIES ----------------
-
     private List<Enemy> enemies = new ArrayList<Enemy>();
 
     private Controller controller;
@@ -198,22 +230,14 @@ public class PlatformerGame extends ApplicationAdapter {
         TextureRegion[][] playerGrid = TextureRegion.split(playerSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
         TextureRegion[][] skeletonGrid = TextureRegion.split(skeletonSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
 
-        // Plains sheet split (48x48 chunks)
         plainsGrid = TextureRegion.split(plainsSheetTexture, FRAME_WIDTH, FRAME_HEIGHT);
 
-        // Build WALK RIGHT frames from the chosen row
+        // ---------------- PLAYER WALK ----------------
         TextureRegion[] walkRightFrames = new TextureRegion[WALK_FRAMES];
         for (int col = 0; col < WALK_FRAMES; col++) {
             walkRightFrames[col] = playerGrid[WALK_ROW][col];
         }
 
-        // Enemy walk right frames
-        TextureRegion[] enemyWalkRightFrames = new TextureRegion[ENEMY_FRAMES];
-        for (int k = 0; k < ENEMY_FRAMES; k++) {
-            enemyWalkRightFrames[k] = skeletonGrid[ENEMY_WALK_ROW][k];
-        }
-
-        // Build WALK LEFT frames by flipping copies of the right frames
         TextureRegion[] walkLeftFrames = new TextureRegion[WALK_FRAMES];
         for (int i = 0; i < WALK_FRAMES; i++) {
             TextureRegion copy = new TextureRegion(walkRightFrames[i]);
@@ -221,25 +245,18 @@ public class PlatformerGame extends ApplicationAdapter {
             walkLeftFrames[i] = copy;
         }
 
-        // Enemy walk left frames
-        TextureRegion[] enemyWalkLeftFrames = new TextureRegion[ENEMY_FRAMES];
-        for (int i = 0; i < ENEMY_FRAMES; i++) {
-            TextureRegion copy = new TextureRegion(enemyWalkRightFrames[i]);
-            copy.flip(true, false);
-            enemyWalkLeftFrames[i] = copy;
-        }
+        float walkFrameDurationSeconds = 0.10f;
+        walkRightAnimation = new Animation<TextureRegion>(walkFrameDurationSeconds, walkRightFrames);
+        walkLeftAnimation = new Animation<TextureRegion>(walkFrameDurationSeconds, walkLeftFrames);
+        walkRightAnimation.setPlayMode(Animation.PlayMode.LOOP);
+        walkLeftAnimation.setPlayMode(Animation.PlayMode.LOOP);
 
-        // Build Attack Right animation
+        // ---------------- PLAYER ATTACK ----------------
         TextureRegion[] attackRightFrames = new TextureRegion[ATTACK_FRAMES];
         for (int j = 0; j < ATTACK_FRAMES; j++) {
             attackRightFrames[j] = playerGrid[ATTACK_ROW][j];
         }
 
-        float attackFrameDurationSeconds = 0.08f;
-        attackRightAnimation = new Animation<TextureRegion>(attackFrameDurationSeconds, attackRightFrames);
-        attackRightAnimation.setPlayMode(Animation.PlayMode.NORMAL);
-
-        // Attack left frames
         TextureRegion[] attackLeftFrames = new TextureRegion[ATTACK_FRAMES];
         for (int i = 0; i < ATTACK_FRAMES; i++) {
             TextureRegion copy = new TextureRegion(attackRightFrames[i]);
@@ -247,11 +264,95 @@ public class PlatformerGame extends ApplicationAdapter {
             attackLeftFrames[i] = copy;
         }
 
+        float attackFrameDurationSeconds = 0.08f;
+        attackRightAnimation = new Animation<TextureRegion>(attackFrameDurationSeconds, attackRightFrames);
         attackLeftAnimation = new Animation<TextureRegion>(attackFrameDurationSeconds, attackLeftFrames);
+        attackRightAnimation.setPlayMode(Animation.PlayMode.NORMAL);
         attackLeftAnimation.setPlayMode(Animation.PlayMode.NORMAL);
 
         // Total time of the attack animation (so we know when to stop attacking)
         attackDurationSeconds = ATTACK_FRAMES * attackFrameDurationSeconds;
+
+        // ---------------- PLAYER DEATH (OPTIONAL) ----------------
+        // If your player sheet doesn't have death row, you can set PLAYER_DEATH_FRAMES to 0 and this will never be used.
+        if (PLAYER_DEATH_FRAMES > 0) {
+            int playerDeathFrames = Math.min(PLAYER_DEATH_FRAMES, playerGrid[PLAYER_DEATH_ROW].length);
+
+            TextureRegion[] deathRightFrames = new TextureRegion[playerDeathFrames];
+            for (int i = 0; i < playerDeathFrames; i++) {
+                deathRightFrames[i] = playerGrid[PLAYER_DEATH_ROW][i];
+            }
+
+            TextureRegion[] deathLeftFrames = new TextureRegion[PLAYER_DEATH_FRAMES];
+            for (int i = 0; i < PLAYER_DEATH_FRAMES; i++) {
+                TextureRegion copy = new TextureRegion(deathRightFrames[i]);
+                copy.flip(true, false);
+                deathLeftFrames[i] = copy;
+            }
+
+            float deathFrameDurationSeconds = 0.10f;
+            deathRightAnimation = new Animation<TextureRegion>(deathFrameDurationSeconds, deathRightFrames);
+            deathLeftAnimation = new Animation<TextureRegion>(deathFrameDurationSeconds, deathLeftFrames);
+            deathRightAnimation.setPlayMode(Animation.PlayMode.NORMAL);
+            deathLeftAnimation.setPlayMode(Animation.PlayMode.NORMAL);
+        }
+
+        // ---------------- ENEMY WALK ----------------
+        TextureRegion[] enemyWalkRightFrames = new TextureRegion[ENEMY_WALK_FRAMES];
+        for (int k = 0; k < ENEMY_WALK_FRAMES; k++) {
+            enemyWalkRightFrames[k] = skeletonGrid[ENEMY_WALK_ROW][k];
+        }
+
+        TextureRegion[] enemyWalkLeftFrames = new TextureRegion[ENEMY_WALK_FRAMES];
+        for (int i = 0; i < ENEMY_WALK_FRAMES; i++) {
+            TextureRegion copy = new TextureRegion(enemyWalkRightFrames[i]);
+            copy.flip(true, false);
+            enemyWalkLeftFrames[i] = copy;
+        }
+
+        enemyWalkRightAnimation = new Animation<TextureRegion>(walkFrameDurationSeconds, enemyWalkRightFrames);
+        enemyWalkLeftAnimation = new Animation<TextureRegion>(walkFrameDurationSeconds, enemyWalkLeftFrames);
+        enemyWalkRightAnimation.setPlayMode(Animation.PlayMode.LOOP);
+        enemyWalkLeftAnimation.setPlayMode(Animation.PlayMode.LOOP);
+
+        // ---------------- ENEMY ATTACK ----------------
+        TextureRegion[] enemyAttackRightFrames = new TextureRegion[ENEMY_ATTACK_FRAMES];
+        for (int i = 0; i < ENEMY_ATTACK_FRAMES; i++) {
+            enemyAttackRightFrames[i] = skeletonGrid[ENEMY_ATTACK_ROW][i];
+        }
+
+        TextureRegion[] enemyAttackLeftFrames = new TextureRegion[ENEMY_ATTACK_FRAMES];
+        for (int i = 0; i < ENEMY_ATTACK_FRAMES; i++) {
+            TextureRegion copy = new TextureRegion(enemyAttackRightFrames[i]);
+            copy.flip(true, false);
+            enemyAttackLeftFrames[i] = copy;
+        }
+
+        enemyAttackRightAnimation = new Animation<TextureRegion>(attackFrameDurationSeconds, enemyAttackRightFrames);
+        enemyAttackLeftAnimation = new Animation<TextureRegion>(attackFrameDurationSeconds, enemyAttackLeftFrames);
+        enemyAttackRightAnimation.setPlayMode(Animation.PlayMode.NORMAL);
+        enemyAttackLeftAnimation.setPlayMode(Animation.PlayMode.NORMAL);
+
+        // ---------------- ENEMY DEATH ----------------
+        int enemyDeathFrames = Math.min(ENEMY_DEATH_FRAMES, skeletonGrid[ENEMY_DEATH_ROW].length);
+
+        TextureRegion[] enemyDeathRightFrames = new TextureRegion[enemyDeathFrames];
+        for (int i = 0; i < enemyDeathFrames; i++) {
+            enemyDeathRightFrames[i] = skeletonGrid[ENEMY_DEATH_ROW][i];
+        }
+
+        TextureRegion[] enemyDeathLeftFrames = new TextureRegion[ENEMY_DEATH_FRAMES];
+        for (int i = 0; i < ENEMY_DEATH_FRAMES; i++) {
+            TextureRegion copy = new TextureRegion(enemyDeathRightFrames[i]);
+            copy.flip(true, false);
+            enemyDeathLeftFrames[i] = copy;
+        }
+
+        float enemyDeathFrameDurationSeconds = 0.10f;
+        enemyDeathRightAnimation = new Animation<TextureRegion>(enemyDeathFrameDurationSeconds, enemyDeathRightFrames);
+        enemyDeathLeftAnimation = new Animation<TextureRegion>(enemyDeathFrameDurationSeconds, enemyDeathLeftFrames);
+        enemyDeathRightAnimation.setPlayMode(Animation.PlayMode.NORMAL);
+        enemyDeathLeftAnimation.setPlayMode(Animation.PlayMode.NORMAL);
 
         // Plains regions (optional)
         groundRegion = plainsGrid[2][0];
@@ -263,21 +364,6 @@ public class PlatformerGame extends ApplicationAdapter {
         playerHeight = 20f;
         drawWidth = 72f;
         drawHeight = 72f;
-
-        float frameDurationSeconds = 0.10f;
-        walkRightAnimation = new Animation<TextureRegion>(frameDurationSeconds, walkRightFrames);
-        walkLeftAnimation = new Animation<TextureRegion>(frameDurationSeconds, walkLeftFrames);
-
-        enemyWalkRightAnimation = new Animation<TextureRegion>(frameDurationSeconds, enemyWalkRightFrames);
-        enemyWalkLeftAnimation = new Animation<TextureRegion>(frameDurationSeconds, enemyWalkLeftFrames);
-
-        walkRightAnimation.setPlayMode(Animation.PlayMode.LOOP);
-        walkLeftAnimation.setPlayMode(Animation.PlayMode.LOOP);
-
-        enemyWalkRightAnimation.setPlayMode(Animation.PlayMode.LOOP);
-        enemyWalkLeftAnimation.setPlayMode(Animation.PlayMode.LOOP);
-
-        stateTimeSeconds = 0f;
 
         shapeRenderer = new ShapeRenderer();
 
@@ -300,33 +386,22 @@ public class PlatformerGame extends ApplicationAdapter {
         isOnGround = false;
 
         float deltaTime = Gdx.graphics.getDeltaTime();
-        stateTimeSeconds = stateTimeSeconds + deltaTime;
+
+        // Animation time
+        playerAnimTimeSeconds = playerAnimTimeSeconds + deltaTime;
 
         updatePlayer(deltaTime);
         updateEnemies(deltaTime);
+
         updatePlayerHurtbox();
         updatePlayerSwordHitbox();
         updateEnemyHitboxes();
+
         handlePlayerSwordHits();
         handleEnemySwordHitsPlayer();
         handleEnemyBodyHitsPlayer();
+
         updateCamera();
-
-        if (isAttacking) {
-            System.out.println("Sword box: x=" + playerSwordHitbox.x
-                + " y=" + playerSwordHitbox.y
-                + " w=" + playerSwordHitbox.width
-                + " h=" + playerSwordHitbox.height);
-        }
-
-//        if (enemies.size() > 0) {
-//            Enemy e = enemies.get(0);
-//            System.out.println("Enemy0 hurtbox: x=" + e.hurtbox.x
-//                + " y=" + e.hurtbox.y
-//                + " w=" + e.hurtbox.width
-//                + " h=" + e.hurtbox.height);
-//        }
-
 
         float red = 0.05f;
         float green = 0.05f;
@@ -339,7 +414,6 @@ public class PlatformerGame extends ApplicationAdapter {
         camera.zoom = MathUtils.clamp(camera.zoom, 0.5f, 3.0f);
         camera.update();
 
-        // --- DRAW WORLD (TEXTURES) ---
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         drawTilesWithTextures();
@@ -347,7 +421,6 @@ public class PlatformerGame extends ApplicationAdapter {
         drawEnemiesWithBatch();
         batch.end();
 
-        /* ---------- SHAPES (DOORS) ---------- */
         shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         drawDoorShapes();
@@ -356,6 +429,8 @@ public class PlatformerGame extends ApplicationAdapter {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
         drawHitboxesDebug();
         shapeRenderer.end();
+
+        removeEnemiesThatFinishedDeath();
     }
 
     private void drawPlayerWithBatch() {
@@ -384,11 +459,50 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     private TextureRegion getCurrentEnemyFrame(Enemy e) {
+        // Death locks everything
+        if (e.isDead) {
+            if (!e.deathStarted) {
+                e.deathStarted = true;
+                e.animTimeSeconds = 0f;
+            }
+
+            if (e.facingRight) {
+                if (enemyDeathRightAnimation.isAnimationFinished(e.animTimeSeconds)) {
+                    e.readyToRemove = true;
+                }
+                return enemyDeathRightAnimation.getKeyFrame(e.animTimeSeconds, false);
+            } else {
+                if (enemyDeathLeftAnimation.isAnimationFinished(e.animTimeSeconds)) {
+                    e.readyToRemove = true;
+                }
+                return enemyDeathLeftAnimation.getKeyFrame(e.animTimeSeconds, false);
+            }
+        }
+
+        // Attack
+        if (e.isAttacking) {
+            if (e.facingRight) {
+                return enemyAttackRightAnimation.getKeyFrame(e.attackTimeSeconds, false);
+            } else {
+                return enemyAttackLeftAnimation.getKeyFrame(e.attackTimeSeconds, false);
+            }
+        }
+
+        // "Hit" state (stun) - if you don't have a hit animation, just show idle frame
+        if (e.stunSeconds > 0f) {
+            if (e.facingRight) {
+                return enemyWalkRightAnimation.getKeyFrames()[0];
+            } else {
+                return enemyWalkLeftAnimation.getKeyFrames()[0];
+            }
+        }
+
+        // Walk / idle
         if (e.isMoving) {
             if (e.facingRight) {
-                return enemyWalkRightAnimation.getKeyFrame(e.stateTimeSeconds, true);
+                return enemyWalkRightAnimation.getKeyFrame(e.animTimeSeconds, true);
             } else {
-                return enemyWalkLeftAnimation.getKeyFrame(e.stateTimeSeconds, true);
+                return enemyWalkLeftAnimation.getKeyFrame(e.animTimeSeconds, true);
             }
         }
 
@@ -400,7 +514,23 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     private TextureRegion getCurrentPlayerFrame() {
-        // 1) Attack has highest priority
+        boolean dead = playerHp <= 0;
+
+        // Death locks
+        if (dead && deathRightAnimation != null && deathLeftAnimation != null) {
+            if (!playerDeathStarted) {
+                playerDeathStarted = true;
+                playerAnimTimeSeconds = 0f;
+            }
+
+            if (facingRight) {
+                return deathRightAnimation.getKeyFrame(playerAnimTimeSeconds, false);
+            } else {
+                return deathLeftAnimation.getKeyFrame(playerAnimTimeSeconds, false);
+            }
+        }
+
+        // Attack has priority
         if (isAttacking) {
             if (facingRight) {
                 return attackRightAnimation.getKeyFrame(attackTimeSeconds, false);
@@ -409,16 +539,25 @@ public class PlatformerGame extends ApplicationAdapter {
             }
         }
 
-        // 2) Movement animations
-        if (isMoving) {
+        // Hit state (stun) - if you don't have a hit animation, show idle
+        if (playerStunSeconds > 0f) {
             if (facingRight) {
-                return walkRightAnimation.getKeyFrame(stateTimeSeconds, true);
+                return walkRightAnimation.getKeyFrames()[0];
             } else {
-                return walkLeftAnimation.getKeyFrame(stateTimeSeconds, true);
+                return walkLeftAnimation.getKeyFrames()[0];
             }
         }
 
-        // 3) Idle
+        // Walk
+        if (isMoving) {
+            if (facingRight) {
+                return walkRightAnimation.getKeyFrame(playerAnimTimeSeconds, true);
+            } else {
+                return walkLeftAnimation.getKeyFrame(playerAnimTimeSeconds, true);
+            }
+        }
+
+        // Idle
         if (facingRight) {
             return walkRightAnimation.getKeyFrames()[0];
         } else {
@@ -427,7 +566,6 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     // ----------------------- LEVEL BUILDING -----------------------
-
     private Level createLevel1() {
         return new Level(Levels.LEVEL_1, TILE_SIZE, 5, 2);
     }
@@ -452,7 +590,6 @@ public class PlatformerGame extends ApplicationAdapter {
         return new Level(Levels.LEVEL_6, TILE_SIZE, 5, 2);
     }
 
-    // Utility you can reuse after switching levels
     private void applyCurrentLevelSettings() {
         worldWidthPixels = currentLevel.getCols() * TILE_SIZE;
         worldHeightPixels = currentLevel.getRows() * TILE_SIZE;
@@ -496,9 +633,54 @@ public class PlatformerGame extends ApplicationAdapter {
         int i = 0;
         while (i < enemies.size()) {
             Enemy e = enemies.get(i);
-            e.stateTimeSeconds = e.stateTimeSeconds + deltaTime;
 
-            // -------- Attack cooldown tick --------
+            // Always advance animation time (even while dead, for death playback)
+            e.animTimeSeconds = e.animTimeSeconds + deltaTime;
+
+            // If dead: do nothing else (death animation plays via animTimeSeconds)
+            if (e.isDead) {
+                i = i + 1;
+                continue;
+            }
+
+            // Stun timer
+            if (e.stunSeconds > 0f) {
+                e.stunSeconds = e.stunSeconds - deltaTime;
+                if (e.stunSeconds < 0f) {
+                    e.stunSeconds = 0f;
+                }
+            }
+
+            // Knockback
+            if (e.knockbackVelX != 0f) {
+                float dx = e.knockbackVelX * deltaTime;
+                e.x = e.x + dx;
+
+                if (e.x < 0f) {
+                    e.x = 0f;
+                    e.knockbackVelX = 0f;
+                }
+                if (e.x + e.width > worldWidthPixels) {
+                    e.x = worldWidthPixels - e.width;
+                    e.knockbackVelX = 0f;
+                }
+
+                if (e.knockbackVelX > 0f) {
+                    e.knockbackVelX = e.knockbackVelX - ENEMY_KNOCKBACK_FRICTION * deltaTime;
+                    if (e.knockbackVelX < 0f) {
+                        e.knockbackVelX = 0f;
+                    }
+                } else {
+                    e.knockbackVelX = e.knockbackVelX + ENEMY_KNOCKBACK_FRICTION * deltaTime;
+                    if (e.knockbackVelX > 0f) {
+                        e.knockbackVelX = 0f;
+                    }
+                }
+            }
+
+            boolean enemyStunned = e.stunSeconds > 0f;
+
+            // Cooldown tick
             if (e.attackCooldownSeconds > 0f) {
                 e.attackCooldownSeconds = e.attackCooldownSeconds - deltaTime;
                 if (e.attackCooldownSeconds < 0f) {
@@ -506,37 +688,29 @@ public class PlatformerGame extends ApplicationAdapter {
                 }
             }
 
-            // -------- Attack active tick --------
+            // Attack tick
             if (e.isAttacking) {
                 e.attackTimeSeconds = e.attackTimeSeconds + deltaTime;
 
                 if (e.attackTimeSeconds >= e.attackDurationSeconds) {
                     e.isAttacking = false;
                     e.attackTimeSeconds = 0f;
-
-                    // after a swing, go on cooldown
                     e.attackCooldownSeconds = e.attackCooldownDurationSeconds;
                 }
             }
 
-            // -------- Start attack if close enough --------
-            if (!e.isAttacking && e.attackCooldownSeconds == 0f) {
+            // Start attack if close, not stunned
+            if (!enemyStunned && !e.isAttacking && e.attackCooldownSeconds == 0f) {
                 float enemyCenterX = e.x + e.width / 2f;
                 float playerCenterX = playerX + playerWidth / 2f;
 
-                float distanceX = enemyCenterX - playerCenterX;
-                float absDistanceX = Math.abs(distanceX);
-
+                float absDistanceX = Math.abs(enemyCenterX - playerCenterX);
                 float attackRange = 40f;
 
                 if (absDistanceX <= attackRange) {
                     e.isAttacking = true;
                     e.attackTimeSeconds = 0f;
-
-                    // Face the player
                     e.facingRight = playerCenterX > enemyCenterX;
-
-                    System.out.println("ENEMY ATTACK START");
                 }
             }
 
@@ -544,25 +718,35 @@ public class PlatformerGame extends ApplicationAdapter {
         }
     }
 
+    private void removeEnemiesThatFinishedDeath() {
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+
+            if (e.isDead && e.readyToRemove) {
+                enemies.remove(i);
+                continue;
+            }
+
+            i = i + 1;
+        }
+    }
 
     private void updatePlayer(float deltaTime) {
-        // Horizontal movement
         float deltaX = 0f;
-
         isMoving = false;
 
         float axisX = 0f;
-
         if (controller != null) {
-            axisX = controller.getAxis(AXIS_LEFT_X); // left stick X is often 0
+            axisX = controller.getAxis(AXIS_LEFT_X);
         }
 
-        // deadzone so it doesn't drift
         float deadzone = 0.20f;
         if (Math.abs(axisX) < deadzone) {
             axisX = 0f;
         }
 
+        // cooldown timers
         if (playerHurtCooldownSeconds > 0f) {
             playerHurtCooldownSeconds = playerHurtCooldownSeconds - deltaTime;
             if (playerHurtCooldownSeconds < 0f) {
@@ -591,79 +775,103 @@ public class PlatformerGame extends ApplicationAdapter {
             }
         }
 
+        // stun timer
+        if (playerStunSeconds > 0f) {
+            playerStunSeconds = playerStunSeconds - deltaTime;
+            if (playerStunSeconds < 0f) {
+                playerStunSeconds = 0f;
+            }
+        }
 
+        // Apply knockback
+        if (playerKnockbackVelX != 0f) {
+            float dx = playerKnockbackVelX * deltaTime;
+            moveHorizontal(dx);
 
-        boolean leftPressed = axisX < 0f
-            || Gdx.input.isKeyPressed(Input.Keys.A)
-            || Gdx.input.isKeyPressed(Input.Keys.LEFT);
+            if (playerKnockbackVelX > 0f) {
+                playerKnockbackVelX = playerKnockbackVelX - PLAYER_KNOCKBACK_FRICTION * deltaTime;
+                if (playerKnockbackVelX < 0f) {
+                    playerKnockbackVelX = 0f;
+                }
+            } else {
+                playerKnockbackVelX = playerKnockbackVelX + PLAYER_KNOCKBACK_FRICTION * deltaTime;
+                if (playerKnockbackVelX > 0f) {
+                    playerKnockbackVelX = 0f;
+                }
+            }
+        }
 
-        boolean rightPressed = axisX > 0f
-            || Gdx.input.isKeyPressed(Input.Keys.D)
-            || Gdx.input.isKeyPressed(Input.Keys.RIGHT);
+        boolean dead = playerHp <= 0;
+        boolean stunned = playerStunSeconds > 0f;
 
+        // Camera zoom keys still allowed
         if (Gdx.input.isKeyPressed(Input.Keys.Z)) {
             camera.zoom += 0.02f;
         }
-
         if (Gdx.input.isKeyPressed(Input.Keys.X)) {
             camera.zoom -= 0.02f;
         }
 
-        if (leftPressed && !rightPressed) {
-            facingRight = false;
-            isMoving = true;
-            deltaX = deltaX - moveSpeed * deltaTime;
+        // If dead: no input, but still fall with gravity
+        if (!dead && !stunned) {
+            boolean leftPressed = axisX < 0f
+                || Gdx.input.isKeyPressed(Input.Keys.A)
+                || Gdx.input.isKeyPressed(Input.Keys.LEFT);
+
+            boolean rightPressed = axisX > 0f
+                || Gdx.input.isKeyPressed(Input.Keys.D)
+                || Gdx.input.isKeyPressed(Input.Keys.RIGHT);
+
+            if (leftPressed && !rightPressed) {
+                facingRight = false;
+                isMoving = true;
+                deltaX = deltaX - moveSpeed * deltaTime;
+            }
+
+            if (rightPressed && !leftPressed) {
+                facingRight = true;
+                isMoving = true;
+                deltaX = deltaX + moveSpeed * deltaTime;
+            }
+
+            if (deltaX != 0f) {
+                moveHorizontal(deltaX);
+            }
+
+            // Input merge
+            boolean jumpDown = false;
+            boolean attackDown = false;
+
+            if (controller != null) {
+                jumpDown = controller.getButton(BUTTON_A);
+                attackDown = controller.getButton(BUTTON_X);
+            }
+
+            jumpDown = jumpDown || Gdx.input.isKeyPressed(Input.Keys.SPACE);
+            attackDown = attackDown || Gdx.input.isButtonPressed(Input.Buttons.LEFT);
+
+            boolean jumpPressedThisFrame = jumpDown && !wasJumpDownLastFrame;
+            boolean attackPressedThisFrame = attackDown && !wasAttackDownLastFrame;
+
+            wasJumpDownLastFrame = jumpDown;
+            wasAttackDownLastFrame = attackDown;
+
+            handleJumpInput(jumpPressedThisFrame);
+            handleAttackInput(deltaTime, attackPressedThisFrame);
+        } else {
+            // If dead or stunned, stop starting new attacks
+            wasJumpDownLastFrame = false;
+            wasAttackDownLastFrame = false;
         }
 
-        if (rightPressed && !leftPressed) {
-            facingRight = true;
-            isMoving = true;
-            deltaX = deltaX + moveSpeed * deltaTime;
-        }
-
-        if (deltaX != 0f) {
-            moveHorizontal(deltaX);
-        }
-
-        // ---------------- CONTROLLER + KB/MOUSE INPUT MERGE ----------------
-
-        boolean jumpDown = false;
-        boolean attackDown = false;
-
-        if (controller != null) {
-            jumpDown = controller.getButton(BUTTON_A);
-            attackDown = controller.getButton(BUTTON_X);
-        }
-
-        // Keep keyboard/mouse too
-        // Jump: Space (down)
-        jumpDown = jumpDown || Gdx.input.isKeyPressed(Input.Keys.SPACE);
-
-        // Attack: left mouse (down)
-        attackDown = attackDown || Gdx.input.isButtonPressed(Input.Buttons.LEFT);
-
-        // Convert "down" to "pressed this frame" (edge detect)
-        boolean jumpPressedThisFrame = jumpDown && !wasJumpDownLastFrame;
-        boolean attackPressedThisFrame = attackDown && !wasAttackDownLastFrame;
-
-        wasJumpDownLastFrame = jumpDown;
-        wasAttackDownLastFrame = attackDown;
-
-        // Jump / double jump + attack
-        handleJumpInput(jumpPressedThisFrame);
-        handleAttackInput(deltaTime, attackPressedThisFrame);
-
-        // Gravity
+        // Gravity always applies
         velocityY = velocityY + gravity * deltaTime;
 
-        // Vertical movement
         float deltaY = velocityY * deltaTime;
-
         if (deltaY != 0f) {
             moveVertical(deltaY);
         }
 
-        // Keep inside world bounds horizontally
         if (playerX < 0f) {
             playerX = 0f;
         }
@@ -671,7 +879,6 @@ public class PlatformerGame extends ApplicationAdapter {
             playerX = worldWidthPixels - playerWidth;
         }
 
-        // Prevent falling below bottom of world
         if (playerY < 0f) {
             playerY = 0f;
             velocityY = 0f;
@@ -683,8 +890,6 @@ public class PlatformerGame extends ApplicationAdapter {
         boolean touchingAquaDoorNow = isTouchingAquaDoor();
 
         if (touchingDoorNow && !wasTouchingDoorLastFrame) {
-            System.out.println("Collision with red door.");
-
             if (currentLevelNumber == 1) {
                 currentLevelNumber = 2;
                 currentLevel = createLevel2();
@@ -699,8 +904,6 @@ public class PlatformerGame extends ApplicationAdapter {
                 applyCurrentLevelSettings();
             }
         } else if (touchingAquaDoorNow && !wasTouchingAquaDoorLastFrame) {
-            System.out.println("Collision with aqua door.");
-
             if (currentLevelNumber == 3) {
                 currentLevelNumber = 4;
                 currentLevel = createLevel4();
@@ -736,17 +939,27 @@ public class PlatformerGame extends ApplicationAdapter {
         while (i < enemies.size()) {
             Enemy e = enemies.get(i);
 
+            if (e.isDead) {
+                i = i + 1;
+                continue;
+            }
+
             if (playerHurtbox.overlaps(e.hurtbox)) {
                 playerHp = playerHp - 1;
 
+                playerStunSeconds = PLAYER_STUN_DURATION;
+
+                float enemyCenterX = e.x + e.width / 2f;
+                float playerCenterX = playerX + playerWidth / 2f;
+
+                if (playerCenterX < enemyCenterX) {
+                    playerKnockbackVelX = -PLAYER_KNOCKBACK_SPEED;
+                } else {
+                    playerKnockbackVelX = PLAYER_KNOCKBACK_SPEED;
+                }
+
                 playerGlobalHurtLockSeconds = PLAYER_GLOBAL_HURT_LOCK;
                 playerBodyHurtCooldownSeconds = PLAYER_BODY_HURT_COOLDOWN;
-
-                System.out.println("PLAYER HIT by ENEMY BODY! HP = " + playerHp);
-
-                if (playerHp <= 0) {
-                    System.out.println("PLAYER DEAD");
-                }
 
                 return;
             }
@@ -754,8 +967,6 @@ public class PlatformerGame extends ApplicationAdapter {
             i = i + 1;
         }
     }
-
-
 
     private boolean isTouchingAquaDoor() {
         float playerLeft = playerX;
@@ -837,7 +1048,6 @@ public class PlatformerGame extends ApplicationAdapter {
         return false;
     }
 
-    // CHANGED: takes jumpPressedThisFrame from updatePlayer()
     private void handleJumpInput(boolean jumpPressedThisFrame) {
         if (jumpPressedThisFrame) {
             if (jumpsUsed < maxJumps) {
@@ -849,9 +1059,7 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     private void handleAttackInput(float deltaTime, boolean attackPressedThisFrame) {
-        // Start attack only on edge press
         if (attackPressedThisFrame && !isAttacking) {
-            System.out.println("ATTACK START");
             isAttacking = true;
             attackTimeSeconds = 0f;
 
@@ -862,8 +1070,6 @@ public class PlatformerGame extends ApplicationAdapter {
             }
         }
 
-
-        // If attacking, advance timer and end attack when done
         if (isAttacking) {
             attackTimeSeconds = attackTimeSeconds + deltaTime;
 
@@ -873,7 +1079,6 @@ public class PlatformerGame extends ApplicationAdapter {
             }
         }
     }
-
 
     private void moveHorizontal(float deltaX) {
         float newX = playerX + deltaX;
@@ -970,14 +1175,12 @@ public class PlatformerGame extends ApplicationAdapter {
 
                 if (overlapX && overlapY) {
 
-                    // Hitting head
                     if (deltaY > 0f) {
                         playerY = tileBottom - playerHeight;
                         velocityY = 0f;
                         return;
                     }
 
-                    // Landing (ONLY when falling)
                     if (deltaY < 0f) {
                         playerY = tileTop;
                         velocityY = 0f;
@@ -994,8 +1197,6 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     private boolean isSolidTile(int tileX, int tileY) {
-        // Enemy spawn tiles should not be solid. Your Level.isSolidTile probably checks tile==1 only,
-        // but this guard makes it future-proof.
         int tileValue = currentLevel.getTile(tileY, tileX);
         if (tileValue == TILE_ENEMY_SPAWN) {
             return false;
@@ -1004,8 +1205,7 @@ public class PlatformerGame extends ApplicationAdapter {
         return currentLevel.isSolidTile(tileX, tileY);
     }
 
-    // ----------------------- CAMERA & DRAWING -----------------------
-
+    // ----------------------- CAMERA & HITBOX UPDATES -----------------------
     private void updateCamera() {
         float camX = playerX + playerWidth / 2f;
         float camY = playerY + playerHeight / 2f;
@@ -1057,10 +1257,15 @@ public class PlatformerGame extends ApplicationAdapter {
         while (i < enemies.size()) {
             Enemy e = enemies.get(i);
 
-            // Enemy hurtbox follows its position
             e.updateHurtbox();
 
-            // Enemy sword hitbox: ON only during attacks
+            // No sword hitbox when dead
+            if (e.isDead) {
+                e.clearSwordHitbox();
+                i = i + 1;
+                continue;
+            }
+
             if (e.isAttacking) {
                 float swordW = 14f;
                 float swordH = 10f;
@@ -1086,51 +1291,45 @@ public class PlatformerGame extends ApplicationAdapter {
         }
     }
 
-
     private void handlePlayerSwordHits() {
         if (!isAttacking) {
             return;
         }
 
-        System.out.println("Checking sword hits... enemies=" + enemies.size());
-
         int i = 0;
         while (i < enemies.size()) {
             Enemy e = enemies.get(i);
+
+            if (e.isDead) {
+                i = i + 1;
+                continue;
+            }
 
             if (!e.wasHitThisAttack && playerSwordHitbox.overlaps(e.hurtbox)) {
                 e.hp = e.hp - 1;
                 e.wasHitThisAttack = true;
 
-                // Optional: tiny hit feedback (later we can add knockback)
-                System.out.println("Enemy hit! HP = " + e.hp);
+                e.stunSeconds = ENEMY_STUN_DURATION;
+
+                float enemyCenterX = e.x + e.width / 2f;
+                float playerCenterX = playerX + playerWidth / 2f;
+
+                if (enemyCenterX < playerCenterX) {
+                    e.knockbackVelX = -ENEMY_KNOCKBACK_SPEED;
+                } else {
+                    e.knockbackVelX = ENEMY_KNOCKBACK_SPEED;
+                }
+
+                // Cancel swing when hit
+                e.isAttacking = false;
+                e.attackTimeSeconds = 0f;
+                e.clearSwordHitbox();
 
                 if (e.hp <= 0) {
-                    enemies.remove(i);
-                    continue; // do NOT increment i
+                    e.startDeath();
                 }
             }
 
-            i = i + 1;
-        }
-    }
-
-
-    private void drawHitboxesDebug() {
-        // Player hurtbox (green)
-        shapeRenderer.setColor(0f, 1f, 0f, 1f);
-        shapeRenderer.rect(playerHurtbox.x, playerHurtbox.y, playerHurtbox.width, playerHurtbox.height);
-
-        // Player sword (yellow)
-        shapeRenderer.setColor(1f, 1f, 0f, 1f);
-        shapeRenderer.rect(playerSwordHitbox.x, playerSwordHitbox.y, playerSwordHitbox.width, playerSwordHitbox.height);
-
-        // Enemy hurtboxes (red)
-        shapeRenderer.setColor(1f, 0f, 0f, 1f);
-        int i = 0;
-        while (i < enemies.size()) {
-            Enemy e = enemies.get(i);
-            shapeRenderer.rect(e.hurtbox.x, e.hurtbox.y, e.hurtbox.width, e.hurtbox.height);
             i = i + 1;
         }
     }
@@ -1147,18 +1346,28 @@ public class PlatformerGame extends ApplicationAdapter {
         while (i < enemies.size()) {
             Enemy e = enemies.get(i);
 
+            if (e.isDead) {
+                i = i + 1;
+                continue;
+            }
+
             if (e.swordHitbox.width > 0f && e.swordHitbox.height > 0f) {
                 if (e.swordHitbox.overlaps(playerHurtbox)) {
                     playerHp = playerHp - 1;
 
+                    playerStunSeconds = PLAYER_STUN_DURATION;
+
+                    float enemyCenterX = e.x + e.width / 2f;
+                    float playerCenterX = playerX + playerWidth / 2f;
+
+                    if (playerCenterX < enemyCenterX) {
+                        playerKnockbackVelX = -PLAYER_KNOCKBACK_SPEED;
+                    } else {
+                        playerKnockbackVelX = PLAYER_KNOCKBACK_SPEED;
+                    }
+
                     playerGlobalHurtLockSeconds = PLAYER_GLOBAL_HURT_LOCK;
                     playerSwordHurtCooldownSeconds = PLAYER_SWORD_HURT_COOLDOWN;
-
-                    System.out.println("PLAYER HIT by ENEMY SWORD! HP = " + playerHp);
-
-                    if (playerHp <= 0) {
-                        System.out.println("PLAYER DEAD");
-                    }
 
                     return;
                 }
@@ -1168,6 +1377,30 @@ public class PlatformerGame extends ApplicationAdapter {
         }
     }
 
+    private void drawHitboxesDebug() {
+        // Player hurtbox (green)
+        shapeRenderer.setColor(0f, 1f, 0f, 1f);
+        shapeRenderer.rect(playerHurtbox.x, playerHurtbox.y, playerHurtbox.width, playerHurtbox.height);
+
+        // Player sword (yellow)
+        shapeRenderer.setColor(1f, 1f, 0f, 1f);
+        shapeRenderer.rect(playerSwordHitbox.x, playerSwordHitbox.y, playerSwordHitbox.width, playerSwordHitbox.height);
+
+        // Enemy hurtboxes (red)
+        shapeRenderer.setColor(1f, 0f, 0f, 1f);
+        int i = 0;
+        while (i < enemies.size()) {
+            Enemy e = enemies.get(i);
+            shapeRenderer.rect(e.hurtbox.x, e.hurtbox.y, e.hurtbox.width, e.hurtbox.height);
+
+            // Enemy sword hitbox (orange-ish)
+            shapeRenderer.setColor(1f, 0.5f, 0f, 1f);
+            shapeRenderer.rect(e.swordHitbox.x, e.swordHitbox.y, e.swordHitbox.width, e.swordHitbox.height);
+
+            shapeRenderer.setColor(1f, 0f, 0f, 1f);
+            i = i + 1;
+        }
+    }
 
     private void drawDoorShapes() {
         int rows = currentLevel.getRows();
@@ -1184,13 +1417,11 @@ public class PlatformerGame extends ApplicationAdapter {
                 float y = row * tileSize;
 
                 if (tile == 2) {
-                    // Red door
                     shapeRenderer.setColor(1f, 0f, 0f, 1f);
                     shapeRenderer.rect(x, y, tileSize, tileSize);
                 }
 
                 if (tile == 3) {
-                    // Aqua door
                     shapeRenderer.setColor(0f, 0.6f, 0.6f, 1f);
                     shapeRenderer.rect(x, y, tileSize, tileSize);
                 }
@@ -1204,7 +1435,7 @@ public class PlatformerGame extends ApplicationAdapter {
     private void drawTilesWithTextures() {
         int rows = currentLevel.getRows();
         int cols = currentLevel.getCols();
-        int tileSize = currentLevel.getTileSize(); // 16
+        int tileSize = currentLevel.getTileSize();
 
         int row = 0;
         while (row < rows) {
@@ -1238,9 +1469,6 @@ public class PlatformerGame extends ApplicationAdapter {
                 } else if (tile == 13) {
                     batch.draw(roundedGrassFlipTexture, x, y, tileSize, tileSize);
                 }
-
-                // We intentionally do nothing for TILE_ENEMY_SPAWN here.
-                // It only exists to place enemies in the level array.
 
                 col = col + 1;
             }

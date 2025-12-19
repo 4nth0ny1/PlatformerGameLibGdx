@@ -12,23 +12,31 @@ public class Enemy {
     public boolean facingRight;
     public boolean isMoving;
 
-    public float stateTimeSeconds;
     public boolean wasHitThisAttack = false;
 
     // --- Combat / collision boxes ---
-    // Hurtbox: where the enemy can be hit
     public final Rectangle hurtbox = new Rectangle();
-
-    // Hitbox: where the enemy's sword would hit (only when attacking)
     public final Rectangle swordHitbox = new Rectangle();
 
-    // Simple combat state (we'll use in later steps)
+    // --- Combat state ---
     public boolean isAttacking = false;
     public float attackTimeSeconds = 0f;
-    public float attackDurationSeconds = 0.20f;
+    public float attackDurationSeconds = 0.48f;
 
     public float attackCooldownSeconds = 0f;
     public float attackCooldownDurationSeconds = 1.00f;
+
+    // --- Hit reaction ---
+    public float stunSeconds = 0f;
+    public float knockbackVelX = 0f;
+
+    // --- Animation time (the ONLY time value enemies should use for animations) ---
+    public float animTimeSeconds = 0f;
+
+    // --- Death state ---
+    public boolean isDead = false;
+    public boolean deathStarted = false;
+    public boolean readyToRemove = false;
 
     public int hp = 3;
 
@@ -40,7 +48,6 @@ public class Enemy {
 
         this.facingRight = true;
         this.isMoving = true;
-        this.stateTimeSeconds = 0f;
 
         updateHurtbox();
         clearSwordHitbox();
@@ -52,5 +59,20 @@ public class Enemy {
 
     public void clearSwordHitbox() {
         swordHitbox.set(0f, 0f, 0f, 0f);
+    }
+
+    public void startDeath() {
+        isDead = true;
+        deathStarted = false;
+        readyToRemove = false;
+
+        isAttacking = false;
+        attackTimeSeconds = 0f;
+        clearSwordHitbox();
+
+        stunSeconds = 0f;
+        knockbackVelX = 0f;
+
+        animTimeSeconds = 0f;
     }
 }
