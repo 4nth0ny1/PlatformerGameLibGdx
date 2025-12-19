@@ -629,6 +629,7 @@ public class PlatformerGame extends ApplicationAdapter {
                     float fixedY = groundTopY;
 
                     Enemy e = new Enemy(spawnX, fixedY, enemyWidth, enemyHeight);
+                    e.homeGroundY = fixedY;
 
                     // Patrol bounds: 6 tiles left/right from spawn (tune this)
                     float patrolRadiusPixels = 6f * TILE_SIZE;
@@ -646,6 +647,24 @@ public class PlatformerGame extends ApplicationAdapter {
             row = row + 1;
         }
     }
+
+    private boolean isPlayerOnSamePlatformAsEnemy(Enemy e) {
+        // If player is in the air, don't let enemies "platform-hop" chase
+        if (!isOnGround) {
+            return false;
+        }
+
+        // If enemy somehow isn't grounded, also don't chase
+        if (!e.isOnGround) {
+            return false;
+        }
+
+        float tolerance = TILE_SIZE * 1.5f; // tune if needed
+        float dy = Math.abs(playerY - e.homeGroundY);
+
+        return dy <= tolerance;
+    }
+
 
     // ----------------------- UPDATE LOGIC -----------------------
     private void updateEnemies(float deltaTime) {
@@ -1448,7 +1467,6 @@ public class PlatformerGame extends ApplicationAdapter {
     }
 
     private void updateEnemyMovementAI(Enemy e, float deltaTime) {
-        // Do not move if dead or stunned
         if (e.isDead) {
             e.isMoving = false;
             return;
@@ -1457,8 +1475,6 @@ public class PlatformerGame extends ApplicationAdapter {
             e.isMoving = false;
             return;
         }
-
-        // If currently attacking, do not move (keeps swings clean)
         if (e.isAttacking) {
             e.isMoving = false;
             return;
@@ -1470,26 +1486,36 @@ public class PlatformerGame extends ApplicationAdapter {
         float distX = playerCenterX - enemyCenterX;
         float absDistX = Math.abs(distX);
 
-        // Chase toggle (hysteresis prevents jitter)
-        if (!e.isChasing && absDistX <= e.aggroRangePixels) {
+        // IMPORTANT: only chase if player is on the same platform
+        boolean samePlatform = isPlayerOnSamePlatformAsEnemy(e);
+
+        // Chase toggle (only if same platform)
+        if (!e.isChasing && samePlatform && absDistX <= e.aggroRangePixels) {
             e.isChasing = true;
-        } else if (e.isChasing && absDistX >= e.disengageRangePixels) {
-            e.isChasing = false;
+        } else if (e.isChasing) {
+            // stop chasing if player left platform OR got too far
+            if (!samePlatform || absDistX >= e.disengageRangePixels) {
+                e.isChasing = false;
+            }
         }
 
         float speed;
         int dir;
 
         if (e.isChasing) {
-            // Chase the player
             dir = (distX >= 0f) ? 1 : -1;
             speed = e.chaseSpeed;
+
+            // NEW: do NOT chase off ledges or into walls
+            if (!enemyHasGroundAhead(e, dir) || enemyHasWallAhead(e, dir)) {
+                e.isMoving = false;
+                e.facingRight = dir > 0;
+                return;
+            }
         } else {
-            // Patrol
             dir = e.moveDir;
             speed = e.patrolSpeed;
 
-            // Patrol bounds
             if (e.x <= e.patrolLeftX) {
                 dir = 1;
             }
@@ -1497,27 +1523,22 @@ public class PlatformerGame extends ApplicationAdapter {
                 dir = -1;
             }
 
-            // Turn around if ledge or wall ahead
             if (!enemyHasGroundAhead(e, dir) || enemyHasWallAhead(e, dir)) {
                 dir = -dir;
             }
         }
 
-        // Apply movement
         float dx = dir * speed * deltaTime;
         float newX = e.x + dx;
 
-        // Collision: if would collide, turn around and stop this frame
         if (enemyWouldCollideAtX(e, newX)) {
             e.moveDir = -dir;
             e.isMoving = false;
             return;
         }
 
-        // Commit movement and update direction/facing
         e.x = newX;
 
-        // Keep inside world
         if (e.x < 0f) {
             e.x = 0f;
             dir = 1;
@@ -1531,6 +1552,7 @@ public class PlatformerGame extends ApplicationAdapter {
         e.facingRight = dir > 0;
         e.isMoving = true;
     }
+
 
 
     // ----------------------- CAMERA & HITBOX UPDATES -----------------------

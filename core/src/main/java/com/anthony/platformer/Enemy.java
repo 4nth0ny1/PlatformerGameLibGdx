@@ -51,6 +51,9 @@ public class Enemy {
     public float disengageRangePixels = 180f; // stop chasing when farther than this
 
     public boolean isChasing = false;
+    // --- Platform lock (the ground Y this enemy belongs to) ---
+    public float homeGroundY = 0f;
+
 
     // ---------------- ENEMY VERTICAL PHYSICS ----------------
     public float velocityY = 0f;
