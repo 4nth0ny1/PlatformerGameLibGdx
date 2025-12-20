@@ -1,5 +1,6 @@
 package com.anthony.platformer;
 
+import com.anthony.platformer.data.GameConfig;
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -121,7 +122,6 @@ public class PlatformerGame extends ApplicationAdapter {
     private static final float ENEMY_KNOCKBACK_FRICTION = 1400f;
 
     // ---------------- TILE & WORLD SETTINGS ----------------
-    private static final int TILE_SIZE = 16;
 
     // Put this value in your Levels.LEVEL_X arrays wherever you want an enemy to spawn.
     private static final int TILE_ENEMY_SPAWN = 20;
@@ -146,7 +146,7 @@ public class PlatformerGame extends ApplicationAdapter {
     private float playerY;
 
     private float moveSpeed = 150f;
-    private float gravity = -800f;
+
     private float velocityY = 0f;
     private float jumpVelocity = 300f;
 
@@ -377,12 +377,10 @@ public class PlatformerGame extends ApplicationAdapter {
         currentLevel = createLevel1();
         applyCurrentLevelSettings();
 
-        // Camera
-        float viewportWidth = 400f;
-        float viewportHeight = 240f;
 
-        camera = new OrthographicCamera(viewportWidth, viewportHeight);
-        camera.position.set(viewportWidth / 2f, viewportHeight / 2f, 0f);
+
+        camera = new OrthographicCamera(GameConfig.VIEWPORT_WIDTH, GameConfig.VIEWPORT_HEIGHT);
+        camera.position.set(GameConfig.VIEWPORT_WIDTH / 2f, GameConfig.VIEWPORT_HEIGHT / 2f, 0f);
         camera.update();
     }
 
@@ -572,32 +570,32 @@ public class PlatformerGame extends ApplicationAdapter {
 
     // ----------------------- LEVEL BUILDING -----------------------
     private Level createLevel1() {
-        return new Level(Levels.LEVEL_1, TILE_SIZE, 5, 2);
+        return new Level(Levels.LEVEL_1, GameConfig.TILE_SIZE, 5, 2);
     }
 
     private Level createLevel2() {
-        return new Level(Levels.LEVEL_2, TILE_SIZE, 55, 2);
+        return new Level(Levels.LEVEL_2, GameConfig.TILE_SIZE, 55, 2);
     }
 
     private Level createLevel3() {
-        return new Level(Levels.LEVEL_3, TILE_SIZE, 5, 2);
+        return new Level(Levels.LEVEL_3, GameConfig.TILE_SIZE, 5, 2);
     }
 
     private Level createLevel4() {
-        return new Level(Levels.LEVEL_4, TILE_SIZE, 5, 2);
+        return new Level(Levels.LEVEL_4, GameConfig.TILE_SIZE, 5, 2);
     }
 
     private Level createLevel5() {
-        return new Level(Levels.LEVEL_5, TILE_SIZE, 5, 2);
+        return new Level(Levels.LEVEL_5, GameConfig.TILE_SIZE, 5, 2);
     }
 
     private Level createLevel6() {
-        return new Level(Levels.LEVEL_6, TILE_SIZE, 5, 2);
+        return new Level(Levels.LEVEL_6, GameConfig.TILE_SIZE, 5, 2);
     }
 
     private void applyCurrentLevelSettings() {
-        worldWidthPixels = currentLevel.getCols() * TILE_SIZE;
-        worldHeightPixels = currentLevel.getRows() * TILE_SIZE;
+        worldWidthPixels = currentLevel.getCols() * GameConfig.TILE_SIZE;
+        worldHeightPixels = currentLevel.getRows() * GameConfig.TILE_SIZE;
 
         playerX = currentLevel.getSpawnX();
         playerY = currentLevel.getSpawnY();
@@ -632,7 +630,7 @@ public class PlatformerGame extends ApplicationAdapter {
                     e.homeGroundY = fixedY;
 
                     // Patrol bounds: 6 tiles left/right from spawn (tune this)
-                    float patrolRadiusPixels = 6f * TILE_SIZE;
+                    float patrolRadiusPixels = 6f * GameConfig.TILE_SIZE;
                     e.patrolLeftX = Math.max(0f, spawnX - patrolRadiusPixels);
                     e.patrolRightX = Math.min(worldWidthPixels - e.width, spawnX + patrolRadiusPixels);
 
@@ -659,7 +657,7 @@ public class PlatformerGame extends ApplicationAdapter {
             return false;
         }
 
-        float tolerance = TILE_SIZE * 1.5f; // tune if needed
+        float tolerance = GameConfig.TILE_SIZE * 1.5f; // tune if needed
         float dy = Math.abs(playerY - e.homeGroundY);
 
         return dy <= tolerance;
@@ -925,7 +923,7 @@ public class PlatformerGame extends ApplicationAdapter {
         }
 
         // Gravity always applies
-        velocityY = velocityY + gravity * deltaTime;
+        velocityY = velocityY + GameConfig.GRAVITY * deltaTime;
 
         float deltaY = velocityY * deltaTime;
         if (deltaY != 0f) {
@@ -1160,10 +1158,10 @@ public class PlatformerGame extends ApplicationAdapter {
         float playerBottom = playerY;
         float playerTop = playerY + playerHeight;
 
-        int minTileX = (int) (playerLeft / TILE_SIZE);
-        int maxTileX = (int) (playerRight / TILE_SIZE);
-        int minTileY = (int) (playerBottom / TILE_SIZE);
-        int maxTileY = (int) (playerTop / TILE_SIZE);
+        int minTileX = (int) (playerLeft / GameConfig.TILE_SIZE);
+        int maxTileX = (int) (playerRight / GameConfig.TILE_SIZE);
+        int minTileY = (int) (playerBottom / GameConfig.TILE_SIZE);
+        int maxTileY = (int) (playerTop / GameConfig.TILE_SIZE);
 
         int tileY = minTileY;
         while (tileY <= maxTileY) {
@@ -1174,13 +1172,13 @@ public class PlatformerGame extends ApplicationAdapter {
                     continue;
                 }
 
-                float tileWorldX = tileX * TILE_SIZE;
-                float tileWorldY = tileY * TILE_SIZE;
+                float tileWorldX = tileX * GameConfig.TILE_SIZE;
+                float tileWorldY = tileY * GameConfig.TILE_SIZE;
 
                 float tileLeft = tileWorldX;
-                float tileRight = tileWorldX + TILE_SIZE;
+                float tileRight = tileWorldX + GameConfig.TILE_SIZE;
                 float tileBottom = tileWorldY;
-                float tileTop = tileWorldY + TILE_SIZE;
+                float tileTop = tileWorldY + GameConfig.TILE_SIZE;
 
                 boolean overlapX = playerRight > tileLeft && playerLeft < tileRight;
                 boolean overlapY = playerTop > tileBottom && playerBottom < tileTop;
@@ -1214,10 +1212,10 @@ public class PlatformerGame extends ApplicationAdapter {
         float bottom = e.y;
         float top = e.y + e.height;
 
-        int minTileX = (int) (left / TILE_SIZE);
-        int maxTileX = (int) (right / TILE_SIZE);
-        int minTileY = (int) (bottom / TILE_SIZE);
-        int maxTileY = (int) (top / TILE_SIZE);
+        int minTileX = (int) (left / GameConfig.TILE_SIZE);
+        int maxTileX = (int) (right / GameConfig.TILE_SIZE);
+        int minTileY = (int) (bottom / GameConfig.TILE_SIZE);
+        int maxTileY = (int) (top / GameConfig.TILE_SIZE);
 
         int ty = minTileY;
         while (ty <= maxTileY) {
@@ -1229,10 +1227,10 @@ public class PlatformerGame extends ApplicationAdapter {
                     continue;
                 }
 
-                float tileLeft = tx * TILE_SIZE;
-                float tileRight = tileLeft + TILE_SIZE;
-                float tileBottom = ty * TILE_SIZE;
-                float tileTop = tileBottom + TILE_SIZE;
+                float tileLeft = tx * GameConfig.TILE_SIZE;
+                float tileRight = tileLeft + GameConfig.TILE_SIZE;
+                float tileBottom = ty * GameConfig.TILE_SIZE;
+                float tileTop = tileBottom + GameConfig.TILE_SIZE;
 
                 boolean overlapX = right > tileLeft && left < tileRight;
                 boolean overlapY = top > tileBottom && bottom < tileTop;
@@ -1267,10 +1265,10 @@ public class PlatformerGame extends ApplicationAdapter {
         float playerBottom = playerY;
         float playerTop = playerY + playerHeight;
 
-        int minTileX = (int) (playerLeft / TILE_SIZE);
-        int maxTileX = (int) (playerRight / TILE_SIZE);
-        int minTileY = (int) (playerBottom / TILE_SIZE);
-        int maxTileY = (int) (playerTop / TILE_SIZE);
+        int minTileX = (int) (playerLeft / GameConfig.TILE_SIZE);
+        int maxTileX = (int) (playerRight / GameConfig.TILE_SIZE);
+        int minTileY = (int) (playerBottom / GameConfig.TILE_SIZE);
+        int maxTileY = (int) (playerTop / GameConfig.TILE_SIZE);
 
         int tileY = minTileY;
         while (tileY <= maxTileY) {
@@ -1281,13 +1279,13 @@ public class PlatformerGame extends ApplicationAdapter {
                     continue;
                 }
 
-                float tileWorldX = tileX * TILE_SIZE;
-                float tileWorldY = tileY * TILE_SIZE;
+                float tileWorldX = tileX * GameConfig.TILE_SIZE;
+                float tileWorldY = tileY * GameConfig.TILE_SIZE;
 
                 float tileLeft = tileWorldX;
-                float tileRight = tileWorldX + TILE_SIZE;
+                float tileRight = tileWorldX + GameConfig.TILE_SIZE;
                 float tileBottom = tileWorldY;
-                float tileTop = tileWorldY + TILE_SIZE;
+                float tileTop = tileWorldY + GameConfig.TILE_SIZE;
 
                 boolean overlapX = playerRight > tileLeft && playerLeft < tileRight;
                 boolean overlapY = playerTop > tileBottom && playerBottom < tileTop;
@@ -1349,10 +1347,10 @@ public class PlatformerGame extends ApplicationAdapter {
 
     private float findGroundYBelow(float startX, float startY, float entityWidth) {
         // Start checking from the tile row at startY and go downward until we hit a solid tile.
-        int startColLeft = (int) (startX / TILE_SIZE);
-        int startColRight = (int) ((startX + entityWidth - 1f) / TILE_SIZE);
+        int startColLeft = (int) (startX / GameConfig.TILE_SIZE);
+        int startColRight = (int) ((startX + entityWidth - 1f) / GameConfig.TILE_SIZE);
 
-        int startRow = (int) (startY / TILE_SIZE) - 1;
+        int startRow = (int) (startY / GameConfig.TILE_SIZE) - 1;
 
         int row = startRow;
         while (row >= 0) {
@@ -1369,7 +1367,7 @@ public class PlatformerGame extends ApplicationAdapter {
 
             if (foundSolid) {
                 // Ground tile top in world coords
-                float tileTopY = (row + 1) * TILE_SIZE;
+                float tileTopY = (row + 1) * GameConfig.TILE_SIZE;
                 return tileTopY;
             }
 
@@ -1388,11 +1386,11 @@ public class PlatformerGame extends ApplicationAdapter {
         float bottom = e.y;
         float top = e.y + e.height;
 
-        int minTileX = (int) (left / TILE_SIZE);
-        int maxTileX = (int) (right / TILE_SIZE);
+        int minTileX = (int) (left / GameConfig.TILE_SIZE);
+        int maxTileX = (int) (right / GameConfig.TILE_SIZE);
 
-        int minTileY = (int) (bottom / TILE_SIZE);
-        int maxTileY = (int) (top / TILE_SIZE);
+        int minTileY = (int) (bottom / GameConfig.TILE_SIZE);
+        int maxTileY = (int) (top / GameConfig.TILE_SIZE);
 
         int ty = minTileY;
         while (ty <= maxTileY) {
@@ -1400,11 +1398,11 @@ public class PlatformerGame extends ApplicationAdapter {
             while (tx <= maxTileX) {
                 if (isSolidTileForEnemy(tx, ty)) {
                     // basic AABB overlap test with this tile
-                    float tileLeft = tx * TILE_SIZE;
-                    float tileRight = tileLeft + TILE_SIZE;
+                    float tileLeft = tx * GameConfig.TILE_SIZE;
+                    float tileRight = tileLeft + GameConfig.TILE_SIZE;
 
-                    float tileBottom = ty * TILE_SIZE;
-                    float tileTop = tileBottom + TILE_SIZE;
+                    float tileBottom = ty * GameConfig.TILE_SIZE;
+                    float tileTop = tileBottom + GameConfig.TILE_SIZE;
 
                     boolean overlapX = right > tileLeft && left < tileRight;
                     boolean overlapY = top > tileBottom && bottom < tileTop;
@@ -1432,8 +1430,8 @@ public class PlatformerGame extends ApplicationAdapter {
 
         float footY = e.y - 1f;
 
-        int tileX = (int) (frontX / TILE_SIZE);
-        int tileY = (int) (footY / TILE_SIZE);
+        int tileX = (int) (frontX / GameConfig.TILE_SIZE);
+        int tileY = (int) (footY / GameConfig.TILE_SIZE);
 
         return isSolidTileForEnemy(tileX, tileY);
     }
@@ -1446,14 +1444,14 @@ public class PlatformerGame extends ApplicationAdapter {
             frontX = e.x - 1f;
         }
 
-        int tileX = (int) (frontX / TILE_SIZE);
+        int tileX = (int) (frontX / GameConfig.TILE_SIZE);
 
         // Check along enemy vertical body
         float bodyBottom = e.y + 1f;
         float bodyTop = e.y + e.height - 1f;
 
-        int minTileY = (int) (bodyBottom / TILE_SIZE);
-        int maxTileY = (int) (bodyTop / TILE_SIZE);
+        int minTileY = (int) (bodyBottom / GameConfig.TILE_SIZE);
+        int maxTileY = (int) (bodyTop / GameConfig.TILE_SIZE);
 
         int ty = minTileY;
         while (ty <= maxTileY) {
